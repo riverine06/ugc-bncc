@@ -1,0 +1,309 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-slate-150: #ebf0f6;
+  --color-slate-850: #0E1A2B;
+
+  --color-army-50: #f4f6f2;
+  --color-army-100: #e6ebd9;
+  --color-army-200: #cedab7;
+  --color-army-300: #aac18b;
+  --color-army-400: #82a45d;
+  --color-army-500: #355E3B;
+  --color-army-600: #3D5A40;
+  --color-army-700: #2B422D;
+  --color-army-800: #203322;
+  --color-army-900: #152417;
+  --color-army-950: #0B130C;
+
+  --color-milgold-400: #FFC02D;
+  --color-milgold-500: #FFB400;
+  --color-milgold-600: #B8860B;
+}
+
+:root {
+  --bg-app: #F4F6F7;
+  --bg-surface: #EAEFF2;
+  --bg-card: #FFFFFF;
+  --bg-nav: #102235;
+  --border-color: #CBD5E1;
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --color-gold: #B8860B;
+  --color-milgreen: #2B422D;
+}
+
+.dark {
+  --bg-app: #07111D;
+  --bg-surface: #0E1A2B;
+  --bg-card: #142238;
+  --bg-nav: #091320;
+  --border-color: #2D3F5E;
+  --text-primary: #F8FAFC;
+  --text-secondary: #CBD5E1;
+  --color-gold: #FFB400;
+  --color-milgreen: #355E3B;
+}
+
+@layer base {
+  body {
+    @apply font-sans bg-[#F4F6F7] text-[#0F172A] antialiased selection:bg-amber-500/30 selection:text-amber-900;
+    background-color: #F4F6F7;
+    color: #0F172A;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Universal High Contrast Light Mode Base Text Fixes */
+  p, span, label, input, button, select, textarea {
+    letter-spacing: -0.01em;
+  }
+
+  /* Universal Dark Theme Core */
+  .dark body {
+    background-color: #07111D;
+    color: #F8FAFC;
+  }
+
+  .dark .bg-slate-950 {
+    background-color: #07111D !important;
+  }
+
+  .dark .bg-slate-900 {
+    background-color: #0E1A2B !important;
+  }
+
+  .dark .bg-slate-800,
+  .dark .bg-slate-850 {
+    background-color: #142238 !important;
+  }
+
+  .dark .bg-white {
+    background-color: #142238 !important;
+    color: #F8FAFC !important;
+    border-color: #2D3F5E !important;
+  }
+
+  .dark .bg-slate-50 {
+    background-color: #07111D !important;
+  }
+
+  .dark .bg-slate-100 {
+    background-color: #0E1A2B !important;
+  }
+
+  .dark .bg-army-50 {
+    background-color: #0d1e14 !important;
+    border-color: #1e3b28 !important;
+  }
+
+  .dark .bg-army-100 {
+    background-color: #0d1e14 !important;
+    border-color: #1e3b28 !important;
+  }
+
+  .dark .bg-amber-50 {
+    background-color: #1e1a0b !important;
+  }
+
+  .dark .bg-amber-100 {
+    background-color: #261e0b !important;
+    border-color: #78350f !important;
+  }
+
+  /* Universal input, select, textarea styling across light & dark */
+  input, select, textarea {
+    transition: all 0.2s ease-in-out;
+    border-color: #CBD5E1;
+  }
+
+  input::placeholder, 
+  textarea::placeholder {
+    color: #475569;
+    opacity: 0.95;
+    font-weight: 500;
+  }
+
+  option {
+    background-color: #FFFFFF;
+    color: #0F172A;
+  }
+
+  .dark input, 
+  .dark select, 
+  .dark option, 
+  .dark textarea {
+    background-color: #0E1A2B;
+    color: #F8FAFC;
+    border-color: #2D3F5E;
+  }
+
+  .dark input::placeholder, 
+  .dark textarea::placeholder {
+    color: #CBD5E1;
+    opacity: 0.95;
+    font-weight: 500;
+  }
+}
+
+/* Universal Typography & High-Contrast Outdoor Sunlight Overrides */
+/* Light Mode Contrast Enhancements */
+.text-slate-500 {
+  color: #334155;
+}
+
+.text-slate-400 {
+  color: #475569;
+}
+
+/* Dark Mode High-Contrast Outdoor Overrides */
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-slate-700 {
+  color: #F8FAFC !important;
+}
+
+.dark .text-slate-600,
+.dark .text-slate-500 {
+  color: #CBD5E1 !important;
+}
+
+.dark .text-slate-400 {
+  color: #94A3B8 !important;
+}
+
+.dark .text-army-950,
+.dark .text-army-900,
+.dark .text-army-850,
+.dark .text-army-800 {
+  color: #F8FAFC !important;
+}
+
+.dark .text-army-500,
+.dark .text-army-600,
+.dark .text-army-700 {
+  color: #B2D8A0 !important;
+}
+
+/* Border overrides for crisp daylight card edges */
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .border-slate-700,
+.dark .border-slate-800,
+.dark .border-slate-850 {
+  border-color: #2D3F5E !important;
+}
+
+.dark .border-army-100,
+.dark .border-army-200 {
+  border-color: #234730 !important;
+}
+
+@layer base {
+  /* Premium Tactical Card Hover & Lift Utilities */
+  .interactive-card {
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .interactive-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 24px -6px rgba(7, 17, 29, 0.12), 0 0 0 1px rgba(255, 180, 0, 0.3);
+  }
+
+  .dark .interactive-card:hover {
+    box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 180, 0, 0.4);
+  }
+
+  /* Premium Buttons */
+  button, a {
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  button:active, a:active {
+    transform: scale(0.98);
+  }
+
+  /* Skeleton Loading */
+  .skeleton {
+    animation: pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    background-color: #EAEFF2;
+  }
+  .dark .skeleton {
+    background-color: #0E1A2B !important;
+  }
+
+  /* Shadows */
+  .shadow-sm {
+    box-shadow: 0 1px 3px 0 rgba(16, 34, 53, 0.05), 0 1px 2px -1px rgba(16, 34, 53, 0.03) !important;
+  }
+  .shadow-md {
+    box-shadow: 0 4px 8px -2px rgba(16, 34, 53, 0.06), 0 2px 4px -2px rgba(16, 34, 53, 0.04) !important;
+  }
+  .shadow-lg {
+    box-shadow: 0 12px 20px -4px rgba(16, 34, 53, 0.08), 0 4px 6px -2px rgba(16, 34, 53, 0.04) !important;
+  }
+  .shadow-xl {
+    box-shadow: 0 20px 28px -8px rgba(16, 34, 53, 0.1), 0 8px 10px -6px rgba(16, 34, 53, 0.04) !important;
+  }
+
+  .dark .shadow-sm,
+  .dark .shadow-md,
+  .dark .shadow-lg,
+  .dark .shadow-xl {
+    box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  /* Focus States */
+  input:focus, select:focus, textarea:focus {
+    outline: none !important;
+    border-color: #FFB400 !important;
+    box-shadow: 0 0 0 3px rgba(255, 180, 0, 0.25) !important;
+  }
+
+  .dark input:focus, .dark select:focus, .dark textarea:focus {
+    outline: none !important;
+    border-color: #FFB400 !important;
+    box-shadow: 0 0 0 3px rgba(255, 180, 0, 0.3) !important;
+  }
+
+  button:focus-visible, a:focus-visible {
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(255, 180, 0, 0.5) !important;
+  }
+
+  /* Custom Military Scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(16, 34, 53, 0.2) transparent;
+  }
+
+  .dark * {
+    scrollbar-color: rgba(255, 180, 0, 0.2) transparent;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: .4;
+  }
+}
+

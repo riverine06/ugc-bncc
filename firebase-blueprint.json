@@ -1,0 +1,313 @@
+{
+  "entities": {
+    "Setting": {
+      "title": "Setting",
+      "description": "System or section configuration settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "section": { "type": "string", "maxLength": 128 },
+        "data": { "type": "object" }
+      },
+      "required": ["id", "section", "data"]
+    },
+    "Homepage": {
+      "title": "Homepage",
+      "description": "Content settings for the homepage",
+      "type": "object",
+      "properties": {
+        "heroTitle": { "type": "string", "maxLength": 512 },
+        "heroSubtitle": { "type": "string", "maxLength": 1024 },
+        "heroBgUrl": { "type": "string", "maxLength": 2048 },
+        "heroBgOption": { "type": "string", "maxLength": 64 },
+        "mottoEnglish": { "type": "string", "maxLength": 512 },
+        "mottoBengali": { "type": "string", "maxLength": 512 },
+        "establishedText": { "type": "string", "maxLength": 128 },
+        "paragraphDescription": { "type": "string", "maxLength": 4096 },
+        "buttonText1": { "type": "string", "maxLength": 128 },
+        "buttonText2": { "type": "string", "maxLength": 128 },
+        "welcomeMessage": { "type": "string", "maxLength": 4096 },
+        "commanderName": { "type": "string", "maxLength": 256 },
+        "commanderRank": { "type": "string", "maxLength": 128 },
+        "commanderPhoto": { "type": "string", "maxLength": 2048 },
+        "commanderMessage": { "type": "string", "maxLength": 4096 },
+        "statsActiveCadets": { "type": "number" },
+        "statsAchievements": { "type": "number" },
+        "statsCampsAttended": { "type": "number" },
+        "statsBloodUnits": { "type": "number" },
+        "heroSlideshowUrls": { "type": "array" }
+      }
+    },
+    "Cadet": {
+      "title": "Cadet",
+      "description": "Dossier profile for a BNCC Cadet or Alumnus",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "maxLength": 256 },
+        "photoUrl": { "type": "string", "maxLength": 2048 },
+        "rank": { "type": "string", "maxLength": 128 },
+        "department": { "type": "string", "maxLength": 256 },
+        "session": { "type": "string", "maxLength": 64 },
+        "joiningYear": { "type": "number" },
+        "graduationYear": { "type": "number" },
+        "bloodGroup": { "type": "string", "maxLength": 16 },
+        "phone": { "type": "string", "maxLength": 64 },
+        "email": { "type": "string", "maxLength": 256 },
+        "biography": { "type": "string", "maxLength": 8192 },
+        "status": { "type": "string", "maxLength": 64 },
+        "verified": { "type": "boolean" },
+        "currentProfession": { "type": "string", "maxLength": 256 },
+        "currentOrganization": { "type": "string", "maxLength": 256 },
+        "currentCity": { "type": "string", "maxLength": 256 },
+        "cadetIdImage": { "type": "string", "maxLength": 2048 }
+      },
+      "required": ["id", "fullName", "rank", "department", "session", "joiningYear", "bloodGroup", "phone", "email"]
+    },
+    "Leadership": {
+      "title": "Leadership",
+      "description": "Leadership appointment references",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "cadetId": { "type": "string", "maxLength": 128 },
+        "position": { "type": "string", "maxLength": 256 },
+        "displayOrder": { "type": "number" },
+        "status": { "type": "string", "maxLength": 64 },
+        "appointmentDate": { "type": "string", "maxLength": 64 },
+        "endDate": { "type": "string", "maxLength": 64 },
+        "roleType": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "cadetId", "position", "displayOrder", "status", "appointmentDate"]
+    },
+    "Event": {
+      "title": "Event",
+      "description": "Platoon activities and training events",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 256 },
+        "description": { "type": "string", "maxLength": 4096 },
+        "eventType": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 64 },
+        "time": { "type": "string", "maxLength": 64 },
+        "venue": { "type": "string", "maxLength": 256 },
+        "registrationDeadline": { "type": "string", "maxLength": 64 },
+        "maxParticipants": { "type": "number" },
+        "imageUrl": { "type": "string", "maxLength": 2048 },
+        "registrationFee": { "type": "number" },
+        "eligibilityRequirements": { "type": "string", "maxLength": 1024 }
+      },
+      "required": ["id", "name", "description", "eventType", "date", "time", "venue", "registrationDeadline"]
+    },
+    "Gallery": {
+      "title": "Gallery",
+      "description": "Public media gallery item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "category": { "type": "string", "maxLength": 128 },
+        "imageUrl": { "type": "string", "maxLength": 2048 },
+        "date": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 2048 }
+      },
+      "required": ["id", "title", "category", "imageUrl", "date"]
+    },
+    "Document": {
+      "title": "Document",
+      "description": "Uploaded training documents and official memos",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "category": { "type": "string", "maxLength": 128 },
+        "fileUrl": { "type": "string", "maxLength": 2048 },
+        "uploadedAt": { "type": "string", "maxLength": 64 },
+        "fileType": { "type": "string", "maxLength": 128 },
+        "description": { "type": "string", "maxLength": 2048 }
+      },
+      "required": ["id", "title", "category", "fileUrl", "uploadedAt"]
+    },
+    "News": {
+      "title": "News",
+      "description": "News and press releases",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "content": { "type": "string", "maxLength": 16384 },
+        "imageUrl": { "type": "string", "maxLength": 2048 },
+        "date": { "type": "string", "maxLength": 64 },
+        "author": { "type": "string", "maxLength": 256 }
+      },
+      "required": ["id", "title", "content", "date"]
+    },
+    "Achievement": {
+      "title": "Achievement",
+      "description": "Awards and recognition received by the platoon or individual cadets",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "memberId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "description": { "type": "string", "maxLength": 4096 },
+        "date": { "type": "string", "maxLength": 64 },
+        "photoUrl": { "type": "string", "maxLength": 2048 },
+        "certificateUrl": { "type": "string", "maxLength": 2048 },
+        "category": { "type": "string", "maxLength": 128 },
+        "recipient": { "type": "string", "maxLength": 256 },
+        "medalType": { "type": "string", "maxLength": 128 },
+        "issuedBy": { "type": "string", "maxLength": 256 }
+      },
+      "required": ["id", "title", "description", "date"]
+    },
+    "Recruitment": {
+      "title": "Recruitment",
+      "description": "Recruitment campaigns details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "startDate": { "type": "string", "maxLength": 64 },
+        "endDate": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 4096 }
+      },
+      "required": ["id", "title", "startDate", "endDate", "status"]
+    },
+    "Application": {
+      "title": "Application",
+      "description": "Applications for recruitment or registry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "fullName": { "type": "string", "maxLength": 256 },
+        "email": { "type": "string", "maxLength": 256 },
+        "phone": { "type": "string", "maxLength": 64 },
+        "type": { "type": "string", "maxLength": 64 },
+        "department": { "type": "string", "maxLength": 256 },
+        "session": { "type": "string", "maxLength": 64 },
+        "joiningYear": { "type": "number" },
+        "graduationYear": { "type": "number" },
+        "highestRank": { "type": "string", "maxLength": 128 },
+        "currentProfession": { "type": "string", "maxLength": 256 },
+        "currentOrganization": { "type": "string", "maxLength": 256 },
+        "currentCity": { "type": "string", "maxLength": 256 },
+        "pastAchievements": { "type": "string", "maxLength": 4096 },
+        "campHistory": { "type": "string", "maxLength": 4096 },
+        "status": { "type": "string", "maxLength": 64 },
+        "submittedAt": { "type": "string", "maxLength": 64 },
+        "address": { "type": "string", "maxLength": 2048 },
+        "photoUrl": { "type": "string", "maxLength": 2048 },
+        "bloodGroup": { "type": "string", "maxLength": 16 }
+      },
+      "required": ["id", "fullName", "email", "phone", "type", "department", "session", "joiningYear", "status", "submittedAt"]
+    },
+    "Notice": {
+      "title": "Notice",
+      "description": "Notice board announcments",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "content": { "type": "string", "maxLength": 8192 },
+        "date": { "type": "string", "maxLength": 64 },
+        "category": { "type": "string", "maxLength": 128 },
+        "pinned": { "type": "boolean" }
+      },
+      "required": ["id", "title", "content", "date", "category", "pinned"]
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "Audit trails for operations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userEmail": { "type": "string", "maxLength": 256 },
+        "action": { "type": "string", "maxLength": 256 },
+        "targetType": { "type": "string", "maxLength": 128 },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string", "maxLength": 64 },
+        "details": { "type": "string", "maxLength": 4096 }
+      },
+      "required": ["id", "userId", "userEmail", "action", "targetType", "targetId", "timestamp", "details"]
+    },
+    "FormerPUO": {
+      "title": "FormerPUO",
+      "description": "Historical records of former Platoon Under Officers (PUOs)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 256 },
+        "photo": { "type": "string", "maxLength": 2048 },
+        "session": { "type": "string", "maxLength": 64 },
+        "department": { "type": "string", "maxLength": 256 },
+        "servicePeriod": { "type": "string", "maxLength": 128 },
+        "startYear": { "type": "number" },
+        "endYear": { "type": "number" }
+      },
+      "required": ["id", "name", "servicePeriod"]
+    }
+  },
+  "firestore": {
+    "/former_puos/{formerPuoId}": {
+      "schema": "FormerPUO",
+      "description": "Historical former PUO records"
+    },
+    "/settings/{settingId}": {
+      "schema": "Setting",
+      "description": "Settings collection"
+    },
+    "/homepage/{homepageDocId}": {
+      "schema": "Homepage",
+      "description": "Homepage section configurations"
+    },
+    "/cadets/{cadetId}": {
+      "schema": "Cadet",
+      "description": "Cadets and profiles"
+    },
+    "/leadership/{leadershipId}": {
+      "schema": "Leadership",
+      "description": "Leadership positions"
+    },
+    "/events/{eventId}": {
+      "schema": "Event",
+      "description": "Events collection"
+    },
+    "/gallery/{galleryId}": {
+      "schema": "Gallery",
+      "description": "Media gallery"
+    },
+    "/documents/{documentId}": {
+      "schema": "Document",
+      "description": "Documents collection"
+    },
+    "/news/{newsId}": {
+      "schema": "News",
+      "description": "News and announcements"
+    },
+    "/achievements/{achievementId}": {
+      "schema": "Achievement",
+      "description": "Achievements and awards"
+    },
+    "/recruitment/{recruitmentId}": {
+      "schema": "Recruitment",
+      "description": "Recruitment campaigns"
+    },
+    "/applications/{applicationId}": {
+      "schema": "Application",
+      "description": "Admissions applications"
+    },
+    "/notices/{noticeId}": {
+      "schema": "Notice",
+      "description": "Notice Board"
+    },
+    "/activityLogs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "Audit trails"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper to check if the user is an authenticated administrator
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.email == 'faisal.ab4303@gmail.com' ||
+        request.auth.token.email == 'admin@ugcbncc.org'
+      );
+    }
+
+    // General rule: Public read-only access, writes restricted to verified admin
+    match /{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Special rule: Allow anyone to submit registration/enlistment forms, but only admin can manage them
+    match /applications/{applicationId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "UGC BNCC Digital Platoon Management System",
+  "description": "The official digital presence, member record archive, recruitment, and event management platform of the Bangladesh National Cadet Corps (BNCC) Platoon of Uttara Government College, established in 2018.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
