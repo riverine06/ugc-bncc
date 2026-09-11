@@ -7,6 +7,7 @@ import React from "react";
 import { Shield, Award, Users, Star, BookOpen, Crown, Edit, Check, X, Plus, Trash, Loader2, Search, ArrowUpDown, RefreshCw } from "lucide-react";
 import { User, UserRole, Member, LeadershipReference, FormerPUO } from "../types";
 import { subscribeToCollection, createDocument, updateDocument, deleteDocument, generateId } from "../firebaseService";
+import { isMemberActive, getPUOStatus, TO_BE_ANNOUNCED, resolveSectionSlotsWithOverflow, STANDARD_COMMAND_POSITIONS } from "../utils/leadershipUtils";
 
 const DEFAULT_FORMER_PUOS: FormerPUO[] = [
   {
@@ -18,6 +19,7 @@ const DEFAULT_FORMER_PUOS: FormerPUO[] = [
     servicePeriod: "2018 – 2022",
     startYear: 2018,
     endYear: 2022,
+    status: "Active",
   },
   {
     id: "fpuo-2",
@@ -28,6 +30,7 @@ const DEFAULT_FORMER_PUOS: FormerPUO[] = [
     servicePeriod: "2014 – 2018",
     startYear: 2014,
     endYear: 2018,
+    status: "Former",
   },
 ];
 
@@ -65,6 +68,7 @@ interface EnrichedLeadershipReference extends LeadershipReference {
   department: string;
   bio: string;
   photo: string;
+  isActiveLeader?: boolean;
 }
 
 interface LeadershipData {
@@ -142,6 +146,7 @@ export default function Leadership({ currentUser }: LeadershipProps) {
   // New position form state
   const [newMemberId, setNewMemberId] = React.useState<string>("");
   const [newPosition, setNewPosition] = React.useState<string>("");
+  const [isCustomPosition, setIsCustomPosition] = React.useState<boolean>(false);
   const [newDisplayOrder, setNewDisplayOrder] = React.useState<number>(10);
   const [newRoleType, setNewRoleType] = React.useState<string>("platoon_commander");
 
@@ -152,6 +157,7 @@ export default function Leadership({ currentUser }: LeadershipProps) {
   const [fPuoSession, setFPuoSession] = React.useState<string>("");
   const [fPuoDept, setFPuoDept] = React.useState<string>("");
   const [fPuoServicePeriod, setFPuoServicePeriod] = React.useState<string>("");
+  const [fPuoStatus, setFPuoStatus] = React.useState<"Active" | "Former">("Active");
 
   // Confirmation Modal state
   const [confirmDialog, setConfirmDialog] = React.useState<{
@@ -201,16 +207,27 @@ export default function Leadership({ currentUser }: LeadershipProps) {
     setLoading(true);
     let rawCadets: Member[] = [];
     let rawLeadership: LeadershipReference[] = [];
+    let rawFormerPUOs: FormerPUO[] = [];
 
     const processData = () => {
-      setCadets(rawCadets.filter((c) => c.verified));
+      // Only active cadets/members can be assigned to leadership positions
+      setCadets(rawCadets.filter((c) => isMemberActive(c, rawFormerPUOs)));
 
       const enrichedRefs = rawLeadership.map((ref) => {
-        const member = rawCadets.find((m) => m.id === ref.memberId);
+        const member = rawCadets.find((m) => m.id === ref.memberId || m.id === (ref as any).cadetId);
+        const isActive = isMemberActive(member, rawFormerPUOs);
         let roleType = ref.roleType as any;
         if (roleType === "faculty") roleType = "platoon_commander";
         if (roleType === "cadet") roleType = "platoon_in_charge";
         if (roleType === "secondary") roleType = "section_leader";
+
+        // If a leadership position has no active assigned member, or if the current leader becomes Former, automatically show "To Be Announced"
+        const displayName = isActive && member ? member.fullName : TO_BE_ANNOUNCED;
+        const displayRank = isActive && member ? (member.rank || ref.position) : (ref.position || TO_BE_ANNOUNCED);
+        const displayDepartment = isActive && member ? (member.department || "General") : TO_BE_ANNOUNCED;
+        const displayBio = isActive && member ? (member.biography || "") : "Command appointment to be announced.";
+        const displayPhoto = isActive && member ? (member.photoUrl || "") : "";
+
         return {
           id: ref.id,
           memberId: ref.memberId,
@@ -220,11 +237,12 @@ export default function Leadership({ currentUser }: LeadershipProps) {
           appointmentDate: ref.appointmentDate,
           endDate: ref.endDate,
           roleType: roleType,
-          name: member?.fullName || "Unlisted Cadet",
-          rank: member?.rank || "Cadet",
-          department: member?.department || "General",
-          bio: member?.biography || "",
-          photo: member?.photoUrl || "",
+          isActiveLeader: isActive,
+          name: displayName,
+          rank: displayRank,
+          department: displayDepartment,
+          bio: displayBio,
+          photo: displayPhoto,
         };
       });
 
@@ -278,9 +296,8 @@ export default function Leadership({ currentUser }: LeadershipProps) {
     });
 
     const unsubFormerPUOs = subscribeToCollection<FormerPUO>("former_puos", async (puoList) => {
-      if (puoList && puoList.length > 0) {
-        setFormerPUOs(puoList);
-      } else {
+      let list = puoList;
+      if (!list || list.length === 0) {
         const seeded = localStorage.getItem("ugc_former_puos_initialized");
         if (!seeded) {
           localStorage.setItem("ugc_former_puos_initialized", "true");
@@ -292,12 +309,14 @@ export default function Leadership({ currentUser }: LeadershipProps) {
               console.warn("Seeding initial former PUO:", err);
             }
           }
-          setFormerPUOs(DEFAULT_FORMER_PUOS);
+          list = DEFAULT_FORMER_PUOS;
         } else {
-          // Genuinely empty because user deleted all records
-          setFormerPUOs([]);
+          list = [];
         }
       }
+      rawFormerPUOs = list;
+      setFormerPUOs(list);
+      processData();
     });
 
     return () => {
@@ -328,6 +347,7 @@ export default function Leadership({ currentUser }: LeadershipProps) {
         servicePeriod: fPuoServicePeriod,
         startYear: startYr,
         endYear: endYr,
+        status: fPuoStatus || "Active",
       };
 
       if (editingFormerPUOId) {
@@ -345,6 +365,7 @@ export default function Leadership({ currentUser }: LeadershipProps) {
       setFPuoSession("");
       setFPuoDept("");
       setFPuoServicePeriod("");
+      setFPuoStatus("Active");
       setError(null);
     } catch (err: any) {
       setError(err.message);
@@ -360,6 +381,7 @@ export default function Leadership({ currentUser }: LeadershipProps) {
     setFPuoSession(p.session || "");
     setFPuoDept(p.department || "");
     setFPuoServicePeriod(p.servicePeriod || "");
+    setFPuoStatus(getPUOStatus(p));
     const formEl = document.getElementById("former-puo-cms-form");
     if (formEl) {
       formEl.scrollIntoView({ behavior: "smooth" });
@@ -373,18 +395,37 @@ export default function Leadership({ currentUser }: LeadershipProps) {
     setFPuoSession("");
     setFPuoDept("");
     setFPuoServicePeriod("");
+    setFPuoStatus("Active");
+  };
+
+  const handleTogglePUOStatus = async (p: FormerPUO) => {
+    const current = getPUOStatus(p);
+    const nextStatus: "Active" | "Former" = current === "Active" ? "Former" : "Active";
+    setSaving(true);
+    try {
+      await updateDocument("former_puos", p.id, { status: nextStatus });
+      setFormerPUOs((prev) =>
+        prev.map((item) => (item.id === p.id ? { ...item, status: nextStatus } : item))
+      );
+      setError(null);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDeleteFormerPUO = (id: string, name?: string) => {
     setConfirmDialog({
-      title: "Delete Former PUO Record",
-      message: `Are you sure you want to permanently delete former officer record "${name || "Former PUO"}"? This cannot be undone.`,
+      title: "Archive Officer Record (Former Status)",
+      message: `Former POUs must remain in the system/archive. Would you like to mark "${name || "this officer"}" as Former to keep their record preserved in the archive?`,
       onConfirm: async () => {
         setSaving(true);
         try {
-          localStorage.setItem("ugc_former_puos_initialized", "true");
-          setFormerPUOs((prev) => prev.filter((p) => p.id !== id));
-          await deleteDocument("former_puos", id);
+          await updateDocument("former_puos", id, { status: "Former" });
+          setFormerPUOs((prev) =>
+            prev.map((item) => (item.id === id ? { ...item, status: "Former" } : item))
+          );
           if (editingFormerPUOId === id) {
             handleCancelEditFormerPUO();
           }
@@ -429,6 +470,13 @@ export default function Leadership({ currentUser }: LeadershipProps) {
       setError("Please select a cadet/officer and enter a command title.");
       return;
     }
+
+    const selectedMember = cadets.find((m) => m.id === newMemberId);
+    if (!selectedMember || !isMemberActive(selectedMember, formerPUOs)) {
+      setError("Only Active members can be assigned to a leadership position. Former members cannot be assigned as current leaders.");
+      return;
+    }
+
     setSaving(true);
     try {
       const id = generateId("lead");
@@ -463,6 +511,7 @@ export default function Leadership({ currentUser }: LeadershipProps) {
 
       setNewMemberId("");
       setNewPosition("");
+      setIsCustomPosition(false);
       setNewDisplayOrder(10);
       setNewRoleType("platoon_commander");
       setCadetSearch("");
@@ -502,11 +551,15 @@ export default function Leadership({ currentUser }: LeadershipProps) {
     });
   };
 
-  const filteredCadets = cadets.filter((c) =>
+  const activeCadets = cadets.filter((c) => isMemberActive(c, formerPUOs));
+  const filteredCadets = activeCadets.filter((c) =>
     c.fullName.toLowerCase().includes(cadetSearch.toLowerCase()) ||
     c.rank.toLowerCase().includes(cadetSearch.toLowerCase()) ||
     c.id.toLowerCase().includes(cadetSearch.toLowerCase())
   );
+
+  const sectionLeaderData = resolveSectionSlotsWithOverflow(data?.references || [], "section_leader");
+  const section2icData = resolveSectionSlotsWithOverflow(data?.references || [], "section_2ic");
 
   if (loading && !data) {
     return (
@@ -565,7 +618,7 @@ export default function Leadership({ currentUser }: LeadershipProps) {
               <span>Assign New Command Position</span>
             </h3>
 
-            <form onSubmit={handleCreateReference} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+            <form onSubmit={handleCreateReference} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
               <div className="space-y-1 lg:col-span-1" ref={dropdownRef}>
                 <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase">1. Search & Select Cadet</label>
                 <div className="relative">
@@ -632,38 +685,104 @@ export default function Leadership({ currentUser }: LeadershipProps) {
 
               <div className="space-y-1 lg:col-span-1">
                 <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase">2. Command Position/Title</label>
-                <input
-                  type="text"
-                  value={newPosition}
-                  onChange={(e) => setNewPosition(e.target.value)}
-                  placeholder="e.g. Section C Commander"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded px-3 py-1.5 text-xs font-bold"
-                />
+                <select
+                  value={
+                    isCustomPosition
+                      ? "__custom__"
+                      : STANDARD_COMMAND_POSITIONS.some((p) => p.value === newPosition)
+                      ? newPosition
+                      : newPosition === ""
+                      ? ""
+                      : "__custom__"
+                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "__custom__") {
+                      setIsCustomPosition(true);
+                      if (STANDARD_COMMAND_POSITIONS.some((p) => p.value === newPosition)) {
+                        setNewPosition("");
+                      }
+                    } else if (val === "") {
+                      setIsCustomPosition(false);
+                      setNewPosition("");
+                    } else {
+                      setIsCustomPosition(false);
+                      setNewPosition(val);
+                      const matched = STANDARD_COMMAND_POSITIONS.find((p) => p.value === val);
+                      if (matched) {
+                        setNewRoleType(matched.roleType);
+                        setNewDisplayOrder(matched.defaultOrder);
+                      }
+                    }
+                  }}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded px-2.5 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500 cursor-pointer"
+                >
+                  <option value="">-- Select Position --</option>
+                  <optgroup label="Level I: Platoon Commander">
+                    <option value="Platoon Commander">Platoon Commander</option>
+                  </optgroup>
+                  <optgroup label="Level II: Platoon In Charge">
+                    <option value="Platoon In Charge">Platoon In Charge (CUO)</option>
+                  </optgroup>
+                  <optgroup label="Level III: Section Leaders (3 Slots)">
+                    <option value="Section 1 Leader">Section 1 Leader</option>
+                    <option value="Section 2 Leader">Section 2 Leader</option>
+                    <option value="Section 3 Leader">Section 3 Leader</option>
+                  </optgroup>
+                  <optgroup label="Level IV: 2nd In Command (3 Slots)">
+                    <option value="Section 1 2IC">Section 1 2IC</option>
+                    <option value="Section 2 2IC">Section 2 2IC</option>
+                    <option value="Section 3 2IC">Section 3 2IC</option>
+                  </optgroup>
+                  <optgroup label="Other / Custom Appointment">
+                    <option value="__custom__">Other / Custom Position...</option>
+                  </optgroup>
+                </select>
+
+                {(isCustomPosition || (!STANDARD_COMMAND_POSITIONS.some((p) => p.value === newPosition) && newPosition !== "")) && (
+                  <input
+                    type="text"
+                    value={newPosition}
+                    onChange={(e) => setNewPosition(e.target.value)}
+                    placeholder="Enter custom position..."
+                    className="w-full mt-1.5 bg-slate-50 dark:bg-slate-950 border border-amber-500/50 rounded px-2.5 py-1 text-xs font-bold text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
+                    autoFocus
+                  />
+                )}
               </div>
 
               <div className="space-y-1 lg:col-span-1">
                 <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase">3. Display Class</label>
                 <select
                   value={newRoleType}
-                  onChange={(e) => setNewRoleType(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded px-2 py-1.5 text-xs"
+                  onChange={(e) => {
+                    const nextRole = e.target.value;
+                    setNewRoleType(nextRole);
+                    if (nextRole === "section_leader" && (!newPosition || newPosition.includes("2IC") || newPosition.includes("Commander") || newPosition.includes("Charge"))) {
+                      setNewPosition("Section 1 Leader");
+                      setNewDisplayOrder(1);
+                      setIsCustomPosition(false);
+                    } else if (nextRole === "section_2ic" && (!newPosition || newPosition.includes("Leader") || newPosition.includes("Commander") || newPosition.includes("Charge"))) {
+                      setNewPosition("Section 1 2IC");
+                      setNewDisplayOrder(1);
+                      setIsCustomPosition(false);
+                    } else if (nextRole === "platoon_commander" && (!newPosition || newPosition.includes("Section") || newPosition.includes("Charge"))) {
+                      setNewPosition("Platoon Commander");
+                      setNewDisplayOrder(1);
+                      setIsCustomPosition(false);
+                    } else if (nextRole === "platoon_in_charge" && (!newPosition || newPosition.includes("Section") || newPosition.includes("Commander"))) {
+                      setNewPosition("Platoon In Charge");
+                      setNewDisplayOrder(2);
+                      setIsCustomPosition(false);
+                    }
+                  }}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded px-2 py-1.5 text-xs font-semibold"
                 >
                   <option value="platoon_commander">Platoon Commander</option>
                   <option value="platoon_in_charge">Platoon In charge</option>
-                  <option value="section_leader">Section Leader</option>
-                  <option value="section_2ic">2nd in command</option>
+                  <option value="section_leader">Section Leader (3 Slots)</option>
+                  <option value="section_2ic">2nd in command (3 Slots)</option>
                 </select>
-              </div>
-
-              <div className="space-y-1 lg:col-span-1">
-                <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase">4. Order Number</label>
-                <input
-                  type="number"
-                  value={newDisplayOrder}
-                  onChange={(e) => setNewDisplayOrder(Number(e.target.value))}
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded px-2 py-1.5 text-xs text-center font-mono"
-                  placeholder="Order"
-                />
               </div>
 
               <div className="lg:col-span-1">
@@ -716,8 +835,20 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                             className="bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-amber-500 focus:outline-none py-0.5 font-bold text-xs"
                           />
                         </td>
-                        <td className="p-3 font-mono text-slate-500">
-                          {ref.memberId}
+                        <td className="p-3">
+                          <div>
+                            <span className={`block font-semibold ${ref.name === TO_BE_ANNOUNCED ? "text-amber-600 dark:text-amber-400 font-bold" : "text-slate-800 dark:text-slate-200"}`}>
+                              {ref.name}
+                            </span>
+                            <span className="text-[10px] font-mono text-slate-400">
+                              {ref.memberId}
+                              {ref.name === TO_BE_ANNOUNCED && (
+                                <span className="ml-1.5 px-1 py-0.5 bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 rounded text-[9px] font-mono font-bold">
+                                  TBA
+                                </span>
+                              )}
+                            </span>
+                          </div>
                         </td>
                         <td className="p-3">
                           <select
@@ -823,7 +954,19 @@ export default function Leadership({ currentUser }: LeadershipProps) {
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase">5. Photo URL (Optional)</label>
+                <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase">5. Officer Status *</label>
+                <select
+                  value={fPuoStatus}
+                  onChange={(e) => setFPuoStatus(e.target.value as "Active" | "Former")}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded px-3 py-1.5 text-xs font-mono font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Former">Former</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[10px] font-mono font-bold text-slate-500 uppercase">6. Photo URL (Optional)</label>
                 <input
                   type="text"
                   placeholder="https://..."
@@ -839,17 +982,17 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                 className="w-full bg-amber-600 hover:bg-amber-700 text-white font-mono text-xs font-bold py-2 rounded transition-all flex items-center justify-center space-x-1 cursor-pointer disabled:opacity-50"
               >
                 {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                <span>{editingFormerPUOId ? "Update Former PUO Record" : "Add Former PUO Record"}</span>
+                <span>{editingFormerPUOId ? "Update PUO Record" : "Add PUO Record"}</span>
               </button>
             </form>
 
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
               <h4 className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300 uppercase mb-3">
-                Managed Former PUO Archive ({formerPUOs.length})
+                Managed PUO Archive & Roster ({formerPUOs.length})
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {formerPUOs.length === 0 ? (
-                  <p className="text-xs text-slate-400 font-mono col-span-3 py-3">No former PUO records registered.</p>
+                  <p className="text-xs text-slate-400 font-mono col-span-3 py-3">No PUO records registered.</p>
                 ) : (
                   formerPUOs.map((f) => (
                     <div key={f.id} className="bg-slate-50 dark:bg-slate-950 p-3 rounded border border-slate-200 dark:border-slate-800 flex items-center justify-between">
@@ -866,7 +1009,19 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                           <p className="text-[10px] text-slate-500 font-mono">{f.servicePeriod}</p>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-1 shrink-0 ml-2">
+                      <div className="flex items-center space-x-1.5 shrink-0 ml-2">
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePUOStatus(f)}
+                          className={`text-[9px] font-mono font-bold uppercase px-2 py-1 rounded transition-colors cursor-pointer border ${
+                            getPUOStatus(f) === "Active"
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                              : "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-300 dark:hover:bg-slate-700"
+                          }`}
+                          title={`Status: ${getPUOStatus(f)}. Click to change to ${getPUOStatus(f) === "Active" ? "Former" : "Active"}`}
+                        >
+                          {getPUOStatus(f)}
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleStartEditFormerPUO(f)}
@@ -878,8 +1033,8 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                         <button
                           type="button"
                           onClick={() => handleDeleteFormerPUO(f.id, f.name)}
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 p-1.5 rounded transition-colors cursor-pointer"
-                          title="Delete record"
+                          className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30 p-1.5 rounded transition-colors cursor-pointer"
+                          title="Archive officer record as Former"
                         >
                           <Trash className="h-3.5 w-3.5" />
                         </button>
@@ -904,7 +1059,32 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                 LEVEL I: PLATOON COMMANDER
               </span>
               {data?.references?.filter((r) => r.roleType === "platoon_commander").length === 0 ? (
-                <p className="text-xs text-slate-400 font-mono">Platoon Commander position vacant or unassigned</p>
+                <div className="max-w-xl mx-auto bg-white dark:bg-slate-900 border-2 border-amber-500/70 rounded-xl overflow-hidden shadow-xl p-6 text-left relative">
+                  <div className="absolute top-4 right-4 bg-amber-500 text-army-950 font-mono text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded">
+                    Platoon Commander
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-center gap-5">
+                    <div className="w-20 h-20 rounded-full border-4 border-amber-400/50 bg-army-900 text-amber-400 font-display font-black text-sm flex items-center justify-center shadow-lg shrink-0">
+                      TBA
+                    </div>
+                    <div className="space-y-1.5 text-center sm:text-left flex-1">
+                      <h3 className="font-display font-black text-amber-600 dark:text-amber-400 text-base uppercase">
+                        ★ To Be Announced
+                      </h3>
+                      <div className="text-xs font-mono space-y-0.5">
+                        <p className="text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wide">
+                          Platoon Commander
+                        </p>
+                        <p className="text-slate-500 uppercase text-[11px] tracking-wide">
+                          To Be Announced
+                        </p>
+                      </div>
+                      <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed font-light">
+                        Command appointment to be announced.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               ) : (
                 data?.references?.filter((r) => r.roleType === "platoon_commander").map((role) => (
                   <div key={role.id} className="max-w-xl mx-auto bg-white dark:bg-slate-900 border-2 border-amber-500 rounded-xl overflow-hidden shadow-xl hover:shadow-2xl transition-all p-6 text-left relative group">
@@ -912,7 +1092,7 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                       {role.position}
                     </div>
                     <div className="flex flex-col sm:flex-row items-center gap-5">
-                      {role.photo && !role.photo.includes("unsplash") ? (
+                      {role.photo && !role.photo.includes("unsplash") && role.name !== TO_BE_ANNOUNCED ? (
                         <img
                           src={role.photo}
                           alt={role.name}
@@ -920,12 +1100,12 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                           referrerPolicy="no-referrer"
                         />
                       ) : (
-                        <div className="w-20 h-20 rounded-full border-4 border-amber-400 bg-army-900 text-amber-400 font-display font-black text-xl flex items-center justify-center shadow-lg shrink-0">
-                          {role.name ? role.name.charAt(0) : "P"}
+                        <div className="w-20 h-20 rounded-full border-4 border-amber-400 bg-army-900 text-amber-400 font-display font-black text-base flex items-center justify-center shadow-lg shrink-0">
+                          {role.name === TO_BE_ANNOUNCED ? "TBA" : (role.name ? role.name.charAt(0) : "P")}
                         </div>
                       )}
                       <div className="space-y-1.5 text-center sm:text-left flex-1">
-                        <h3 className="font-display font-black text-slate-900 dark:text-white text-base uppercase">
+                        <h3 className={`font-display font-black text-base uppercase ${role.name === TO_BE_ANNOUNCED ? "text-amber-600 dark:text-amber-400" : "text-slate-900 dark:text-white"}`}>
                           ★ {role.name}
                         </h3>
                         <div className="text-xs font-mono space-y-0.5">
@@ -960,7 +1140,27 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                 LEVEL II: PLATOON IN CHARGE
               </span>
               {data?.references?.filter((r) => r.roleType === "platoon_in_charge").length === 0 ? (
-                <p className="text-xs text-slate-400 font-mono">Platoon In charge position vacant or unassigned</p>
+                <div className="max-w-xl mx-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-lg p-6 text-left relative">
+                  <div className="absolute top-4 right-4 bg-amber-100 dark:bg-amber-950/60 text-amber-950 dark:text-amber-300 border border-amber-300/70 dark:border-amber-500/40 font-mono text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded">
+                    Platoon In Charge
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-center gap-5">
+                    <div className="w-20 h-20 rounded-full border-4 border-army-600 bg-army-900 text-amber-400 font-display font-black text-sm flex items-center justify-center shadow-lg shrink-0">
+                      TBA
+                    </div>
+                    <div className="space-y-1.5 text-center sm:text-left flex-1">
+                      <h3 className="font-display font-extrabold text-amber-600 dark:text-amber-400 text-base uppercase">
+                        To Be Announced
+                      </h3>
+                      <p className="text-xs font-mono text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wide">
+                        Platoon In Charge (CUO) • To Be Announced
+                      </p>
+                      <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed font-light">
+                        Command appointment to be announced.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               ) : (
                 data?.references?.filter((r) => r.roleType === "platoon_in_charge").map((role) => (
                   <div key={role.id} className="max-w-xl mx-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all p-6 text-left relative group hover:border-amber-500/40">
@@ -968,7 +1168,7 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                       {role.position}
                     </div>
                     <div className="flex flex-col sm:flex-row items-center gap-5">
-                      {role.photo && !role.photo.includes("unsplash") ? (
+                      {role.photo && !role.photo.includes("unsplash") && role.name !== TO_BE_ANNOUNCED ? (
                         <img
                           src={role.photo}
                           alt={role.name}
@@ -976,12 +1176,12 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                           referrerPolicy="no-referrer"
                         />
                       ) : (
-                        <div className="w-20 h-20 rounded-full border-4 border-army-600 bg-army-900 text-amber-400 font-display font-black text-xl flex items-center justify-center shadow-lg shrink-0">
-                          {role.name ? role.name.charAt(0) : "C"}
+                        <div className="w-20 h-20 rounded-full border-4 border-army-600 bg-army-900 text-amber-400 font-display font-black text-base flex items-center justify-center shadow-lg shrink-0">
+                          {role.name === TO_BE_ANNOUNCED ? "TBA" : (role.name ? role.name.charAt(0) : "C")}
                         </div>
                       )}
                       <div className="space-y-1.5 text-center sm:text-left flex-1">
-                        <h3 className="font-display font-extrabold text-slate-900 dark:text-white text-base uppercase">
+                        <h3 className={`font-display font-extrabold text-base uppercase ${role.name === TO_BE_ANNOUNCED ? "text-amber-600 dark:text-amber-400" : "text-slate-900 dark:text-white"}`}>
                           {role.name}
                         </h3>
                         <p className="text-xs font-mono text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wide">
@@ -1000,26 +1200,94 @@ export default function Leadership({ currentUser }: LeadershipProps) {
             {/* Connection Line II */}
             <div className="h-10 flex items-center justify-center pointer-events-none">
               <div className="w-[2px] bg-amber-500 h-full relative">
+                <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-amber-500 animate-ping"></span>
                 <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-amber-500 border border-white"></span>
               </div>
             </div>
 
-            {/* Level 3: Section Leader */}
+            {/* Level 3: Section Leader (3 Sections) */}
             <div className="relative z-10 text-center">
               <span className="inline-block text-[9px] font-mono bg-amber-100 dark:bg-amber-950/60 text-amber-950 dark:text-amber-300 border border-amber-300/70 dark:border-amber-500/40 font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow mb-4">
-                LEVEL III: SECTION LEADER
+                LEVEL III: SECTION LEADERS (3 SECTIONS)
               </span>
-              <div className="flex flex-wrap justify-center gap-6 max-w-4xl mx-auto">
-                {data?.references?.filter((r) => r.roleType === "section_leader").length === 0 ? (
-                  <p className="text-xs text-slate-400 font-mono w-full">Section Leader positions vacant or unassigned</p>
-                ) : (
-                  data?.references?.filter((r) => r.roleType === "section_leader").map((role) => (
-                    <div key={role.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-md p-5 text-left relative group hover:border-amber-500/30 w-full max-w-sm md:w-[360px] shrink-0">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                {sectionLeaderData.slots.map((slot) => {
+                  const role = slot.reference;
+                  const isTBA = !role || role.name === TO_BE_ANNOUNCED;
+
+                  return (
+                    <div
+                      key={`slot-sl-${slot.slotNumber}`}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-md p-5 text-left relative group hover:border-amber-500/40 transition-all flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-mono text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded">
+                            {slot.sectionName}
+                          </span>
+                          <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-[8px] font-bold uppercase px-1.5 py-0.5 rounded">
+                            {role?.position || slot.defaultTitle}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center space-x-4">
+                          {role?.photo && !role.photo.includes("unsplash") && !isTBA ? (
+                            <img
+                              src={role.photo}
+                              alt={role.name}
+                              className="w-14 h-14 rounded-full border-2 border-army-500 object-cover shadow-sm shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-14 h-14 rounded-full border-2 border-army-500 bg-army-900 text-amber-400 font-bold text-xs flex items-center justify-center shadow-sm shrink-0 font-display">
+                              {isTBA ? "TBA" : (role?.name ? role.name.charAt(0) : "S")}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <h4
+                              className={`font-display font-bold text-sm uppercase truncate ${
+                                isTBA ? "text-amber-600 dark:text-amber-400" : "text-slate-900 dark:text-white"
+                              }`}
+                            >
+                              {isTBA ? TO_BE_ANNOUNCED : role?.name}
+                            </h4>
+                            <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wide truncate">
+                              {isTBA ? "Section Leader • Vacant" : (role?.rank || "Section Leader")}
+                            </p>
+                            <p className="text-[10px] text-slate-500 truncate">
+                              {isTBA ? "To Be Announced" : (role?.department || "General")}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {role?.bio && !isTBA ? (
+                        <p className="text-slate-600 dark:text-slate-400 text-xs leading-relaxed font-light mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/80 line-clamp-2">
+                          {role.bio}
+                        </p>
+                      ) : (
+                        <p className="text-slate-400 dark:text-slate-500 text-xs italic font-light mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                          Command appointment to be announced.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Extra Section Leaders if any beyond 3 */}
+              {sectionLeaderData.extraRefs.length > 0 && (
+                <div className="mt-4 flex flex-wrap justify-center gap-6 max-w-5xl mx-auto">
+                  {sectionLeaderData.extraRefs.map((role) => (
+                    <div
+                      key={role.id}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-md p-5 text-left relative group hover:border-amber-500/40 w-full max-w-sm md:w-[320px] shrink-0"
+                    >
                       <div className="absolute top-3 right-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-[8px] font-bold uppercase px-1.5 py-0.5 rounded">
                         {role.position}
                       </div>
                       <div className="flex items-center space-x-4">
-                        {role.photo && !role.photo.includes("unsplash") ? (
+                        {role.photo && !role.photo.includes("unsplash") && role.name !== TO_BE_ANNOUNCED ? (
                           <img
                             src={role.photo}
                             alt={role.name}
@@ -1027,12 +1295,12 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                             referrerPolicy="no-referrer"
                           />
                         ) : (
-                          <div className="w-14 h-14 rounded-full border-2 border-army-500 bg-army-900 text-amber-400 font-bold text-base flex items-center justify-center shadow-sm shrink-0">
-                            {role.name ? role.name.charAt(0) : "S"}
+                          <div className="w-14 h-14 rounded-full border-2 border-army-500 bg-army-900 text-amber-400 font-bold text-xs flex items-center justify-center shadow-sm shrink-0">
+                            {role.name === TO_BE_ANNOUNCED ? "TBA" : (role.name ? role.name.charAt(0) : "S")}
                           </div>
                         )}
                         <div className="min-w-0">
-                          <h4 className="font-display font-bold text-sm text-slate-900 dark:text-white uppercase truncate">
+                          <h4 className={`font-display font-bold text-sm uppercase truncate ${role.name === TO_BE_ANNOUNCED ? "text-amber-600 dark:text-amber-400" : "text-slate-900 dark:text-white"}`}>
                             {role.name}
                           </h4>
                           <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wide">
@@ -1042,9 +1310,9 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                         </div>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Connection Line III */}
@@ -1054,26 +1322,84 @@ export default function Leadership({ currentUser }: LeadershipProps) {
               </div>
             </div>
 
-            {/* Level 4: 2nd in command */}
+            {/* Level 4: 2nd in command (3 Sections) */}
             <div className="relative z-10 text-center">
               <span className="inline-block text-[9px] font-mono bg-slate-100 dark:bg-slate-850 text-slate-700 dark:text-amber-400 font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow mb-4 border border-slate-200 dark:border-slate-800">
-                LEVEL IV: 2ND IN COMMAND (2IC)
+                LEVEL IV: 2ND IN COMMAND (2IC) (3 SECTIONS)
               </span>
 
-              <div className="flex flex-wrap justify-center gap-5 max-w-4xl mx-auto">
-                {data?.references?.filter((r) => r.roleType === "section_2ic").length === 0 ? (
-                  <p className="text-xs text-slate-400 font-mono w-full">2nd in command positions vacant or unassigned</p>
-                ) : (
-                  data?.references?.filter((r) => r.roleType === "section_2ic").map((sec) => (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-5xl mx-auto">
+                {section2icData.slots.map((slot) => {
+                  const sec = slot.reference;
+                  const isTBA = !sec || sec.name === TO_BE_ANNOUNCED;
+
+                  return (
+                    <div
+                      key={`slot-2ic-${slot.slotNumber}`}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm p-4 text-left relative group hover:border-amber-500/30 transition-all flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex justify-between items-center mb-2.5">
+                          <span className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[9px] font-black uppercase px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                            {slot.sectionName}
+                          </span>
+                          <span className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 font-mono text-[8px] font-bold uppercase px-1.5 py-0.5 rounded">
+                            {sec?.position || slot.defaultTitle}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center space-x-3.5">
+                          {sec?.photo && !sec.photo.includes("unsplash") && !isTBA ? (
+                            <img
+                              src={sec.photo}
+                              alt={sec.name}
+                              className="w-12 h-12 rounded-full border-2 border-army-600/80 object-cover shadow-sm shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-full border-2 border-army-600/80 bg-army-900 text-amber-400 font-bold text-xs flex items-center justify-center shadow-sm shrink-0 font-display">
+                              {isTBA ? "TBA" : (sec?.name ? sec.name.charAt(0) : "S")}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <h4
+                              className={`font-display font-bold text-xs md:text-sm uppercase truncate ${
+                                isTBA ? "text-amber-600 dark:text-amber-400" : "text-slate-900 dark:text-white"
+                              }`}
+                            >
+                              {isTBA ? TO_BE_ANNOUNCED : sec?.name}
+                            </h4>
+                            <p className="text-[9px] font-mono text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wide truncate">
+                              {isTBA ? "Section 2IC • Vacant" : (sec?.rank || "Section 2IC")}
+                            </p>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                              {isTBA ? "To Be Announced" : (sec?.department || "General")}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-slate-400 dark:text-slate-500 text-[10px] italic font-light mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                        {isTBA ? "Command appointment to be announced." : "Assists the Section Commander in squad operations."}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Extra 2ICs if any beyond 3 */}
+              {section2icData.extraRefs.length > 0 && (
+                <div className="mt-4 flex flex-wrap justify-center gap-5 max-w-5xl mx-auto">
+                  {section2icData.extraRefs.map((sec) => (
                     <div
                       key={sec.id}
-                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm p-4 text-left relative group hover:border-amber-500/30 transition-all w-full max-w-sm md:w-[340px] shrink-0"
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm p-4 text-left relative group hover:border-amber-500/30 transition-all w-full max-w-sm md:w-[320px] shrink-0"
                     >
                       <div className="absolute top-2.5 right-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-[8px] font-bold uppercase px-1.5 py-0.5 rounded">
                         {sec.position || "Section 2IC"}
                       </div>
                       <div className="flex items-center space-x-3.5">
-                        {sec.photo && !sec.photo.includes("unsplash") ? (
+                        {sec.photo && !sec.photo.includes("unsplash") && sec.name !== TO_BE_ANNOUNCED ? (
                           <img
                             src={sec.photo}
                             alt={sec.name}
@@ -1081,12 +1407,12 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                             referrerPolicy="no-referrer"
                           />
                         ) : (
-                          <div className="w-12 h-12 rounded-full border-2 border-army-600/80 bg-army-900 text-amber-400 font-bold text-sm flex items-center justify-center shadow-sm shrink-0">
-                            {sec.name ? sec.name.charAt(0) : "S"}
+                          <div className="w-12 h-12 rounded-full border-2 border-army-600/80 bg-army-900 text-amber-400 font-bold text-xs flex items-center justify-center shadow-sm shrink-0">
+                            {sec.name === TO_BE_ANNOUNCED ? "TBA" : (sec.name ? sec.name.charAt(0) : "S")}
                           </div>
                         )}
                         <div className="min-w-0 pr-12">
-                          <h4 className="font-display font-bold text-xs md:text-sm text-slate-900 dark:text-white uppercase truncate">
+                          <h4 className={`font-display font-bold text-xs md:text-sm uppercase truncate ${sec.name === TO_BE_ANNOUNCED ? "text-amber-600 dark:text-amber-400" : "text-slate-900 dark:text-white"}`}>
                             {sec.name}
                           </h4>
                           <p className="text-[9px] font-mono text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wide">
@@ -1096,9 +1422,9 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                         </div>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
 
@@ -1142,8 +1468,12 @@ export default function Leadership({ currentUser }: LeadershipProps) {
                         </div>
                       )}
                       <div className="space-y-1 min-w-0">
-                        <span className="text-[9px] font-mono font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400 px-2 py-0.5 rounded uppercase inline-block">
-                          Former PUO
+                        <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded uppercase inline-block border ${
+                          getPUOStatus(fpuo) === "Active"
+                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400 border-emerald-500/30"
+                            : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400 border-amber-500/30"
+                        }`}>
+                          {getPUOStatus(fpuo) === "Active" ? "Active PUO" : "Former PUO"}
                         </span>
                         <h4 className="font-display font-bold text-slate-900 dark:text-white text-sm uppercase truncate">
                           {fpuo.name}

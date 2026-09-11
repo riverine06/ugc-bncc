@@ -314,4 +314,5 @@ export interface FormerPUO {
   servicePeriod: string; // e.g., "2018 - 2022" or "2022 - 2025"
   startYear?: number;
   endYear?: number;
+  status?: "Active" | "Former";
 }

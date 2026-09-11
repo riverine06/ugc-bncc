@@ -247,7 +247,8 @@
         "department": { "type": "string", "maxLength": 256 },
         "servicePeriod": { "type": "string", "maxLength": 128 },
         "startYear": { "type": "number" },
-        "endYear": { "type": "number" }
+        "endYear": { "type": "number" },
+        "status": { "type": "string", "maxLength": 32 }
       },
       "required": ["id", "name", "servicePeriod"]
     }

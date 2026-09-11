@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { Member, LeadershipReference } from "../../types";
 import { subscribeToCollection, createDocument, updateDocument, deleteDocument, generateId } from "../../firebaseService";
+import { STANDARD_COMMAND_POSITIONS } from "../../utils/leadershipUtils";
 
 interface LeadershipReferencesProps {
   members: Member[];
@@ -590,43 +591,90 @@ export default function LeadershipReferences({ members, onRefresh }: LeadershipR
 
               <div className="space-y-1">
                 <label className="font-mono text-slate-500 uppercase text-[9px]">Official Command Title</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g., Platoon Commander, Cadet Quartermaster"
-                  value={form.position}
-                  onChange={(e) => setForm({ ...form, position: e.target.value })}
-                  className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-3 w-full text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
-                />
+                <select
+                  value={
+                    STANDARD_COMMAND_POSITIONS.some((p) => p.value === form.position)
+                      ? form.position
+                      : form.position === ""
+                      ? ""
+                      : "__custom__"
+                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "__custom__") {
+                      if (STANDARD_COMMAND_POSITIONS.some((p) => p.value === form.position)) {
+                        setForm({ ...form, position: "" });
+                      }
+                    } else if (val === "") {
+                      setForm({ ...form, position: "" });
+                    } else {
+                      const matched = STANDARD_COMMAND_POSITIONS.find((p) => p.value === val);
+                      setForm({
+                        ...form,
+                        position: val,
+                        ...(matched ? { roleType: matched.roleType, displayOrder: String(matched.defaultOrder) } : {}),
+                      });
+                    }
+                  }}
+                  className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded py-2 px-2.5 w-full text-xs font-bold text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500 cursor-pointer"
+                >
+                  <option value="">-- Select Command Position --</option>
+                  <optgroup label="Level I: Platoon Commander">
+                    <option value="Platoon Commander">Platoon Commander</option>
+                  </optgroup>
+                  <optgroup label="Level II: Platoon In Charge">
+                    <option value="Platoon In Charge">Platoon In Charge (CUO)</option>
+                  </optgroup>
+                  <optgroup label="Level III: Section Leaders (3 Slots)">
+                    <option value="Section 1 Leader">Section 1 Leader</option>
+                    <option value="Section 2 Leader">Section 2 Leader</option>
+                    <option value="Section 3 Leader">Section 3 Leader</option>
+                  </optgroup>
+                  <optgroup label="Level IV: 2nd In Command (3 Slots)">
+                    <option value="Section 1 2IC">Section 1 2IC</option>
+                    <option value="Section 2 2IC">Section 2 2IC</option>
+                    <option value="Section 3 2IC">Section 3 2IC</option>
+                  </optgroup>
+                  <optgroup label="Other / Custom Appointment">
+                    <option value="__custom__">Other / Custom Position...</option>
+                  </optgroup>
+                </select>
+
+                {(!STANDARD_COMMAND_POSITIONS.some((p) => p.value === form.position) || form.position === "") && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom position title..."
+                    value={form.position}
+                    onChange={(e) => setForm({ ...form, position: e.target.value })}
+                    className="w-full mt-1.5 bg-slate-50 dark:bg-slate-850 border border-amber-500/50 rounded py-1.5 px-3 text-xs font-bold text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
+                  />
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-mono text-slate-500 uppercase text-[9px]">Role Group</label>
-                  <select
-                    value={form.roleType}
-                    onChange={(e) => setForm({ ...form, roleType: e.target.value })}
-                    className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-2 w-full text-slate-750 dark:text-slate-350 focus:outline-none"
-                  >
-                    <option value="platoon_commander">Platoon Commander</option>
-                    <option value="platoon_in_charge">Platoon In charge</option>
-                    <option value="section_leader">Section Leader</option>
-                    <option value="section_2ic">2nd in command</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="font-mono text-slate-500 uppercase text-[9px]">Display priority</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    max="100"
-                    placeholder="e.g., 10 (lowest priority display)"
-                    value={form.displayOrder}
-                    onChange={(e) => setForm({ ...form, displayOrder: e.target.value })}
-                    className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-3 w-full text-slate-900 dark:text-slate-100 focus:outline-none"
-                  />
-                </div>
+              <div className="space-y-1">
+                <label className="font-mono text-slate-500 uppercase text-[9px]">Role Group</label>
+                <select
+                  value={form.roleType}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    let newPos = form.position;
+                    let newOrder = form.displayOrder;
+                    if (next === "section_leader" && (!newPos || newPos.includes("Commander") || newPos.includes("2IC"))) {
+                      newPos = "Section 1 Leader";
+                      newOrder = "1";
+                    } else if (next === "section_2ic" && (!newPos || newPos.includes("Commander") || newPos.includes("Leader"))) {
+                      newPos = "Section 1 2IC";
+                      newOrder = "1";
+                    }
+                    setForm({ ...form, roleType: next, position: newPos, displayOrder: newOrder });
+                  }}
+                  className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded py-2 px-2.5 w-full text-slate-750 dark:text-slate-350 focus:outline-none text-xs font-semibold"
+                >
+                  <option value="platoon_commander">Platoon Commander</option>
+                  <option value="platoon_in_charge">Platoon In charge</option>
+                  <option value="section_leader">Section Leader (3 Slots)</option>
+                  <option value="section_2ic">2nd in command (3 Slots)</option>
+                </select>
               </div>
 
               <button
