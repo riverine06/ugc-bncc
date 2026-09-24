@@ -8,6 +8,7 @@ import { motion } from "motion/react";
 import { History, Shield, Milestone, Flame, Edit, Plus, Trash, Check, X, Loader2 } from "lucide-react";
 import { User, UserRole } from "../types";
 import { getSingleDocument, setSingleDocument } from "../firebaseService";
+import SEO from "./SEO";
 
 interface AboutProps {
   currentUser: User | null;
@@ -276,6 +277,16 @@ export default function About({ currentUser }: AboutProps) {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-12">
+      <SEO
+        title="About Platoon History & Milestones | UGC BNCC"
+        description="Discover the history, objectives, cadet oath, and chronological milestones of Uttara Government College BNCC Platoon under 3 Ramna Battalion, established in 2018."
+        canonicalPath="/about"
+        breadcrumbs={[
+          { name: "Home", url: "/" },
+          { name: "About", url: "/about" }
+        ]}
+      />
+
       {/* Admin Quick Action Panel */}
       {isAdmin && (
         <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-300/50 p-4 rounded-xl flex items-center justify-between shadow-sm">
@@ -334,9 +345,9 @@ export default function About({ currentUser }: AboutProps) {
             <div className="absolute top-0 left-0 h-2 w-full bg-army-700"></div>
             <div className="flex items-center space-x-3 mb-6">
               <History className="h-6 w-6 text-army-800 dark:text-amber-500" />
-              <h2 className="text-2xl font-display font-extrabold text-army-950 dark:text-white uppercase tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-display font-extrabold text-army-950 dark:text-white uppercase tracking-tight">
                 PLATOON HISTORY & LEGACY
-              </h2>
+              </h1>
             </div>
 
             <div className="prose dark:prose-invert text-slate-700 dark:text-slate-300 leading-relaxed space-y-4 max-w-none text-sm font-light">
@@ -350,7 +361,7 @@ export default function About({ currentUser }: AboutProps) {
           <section className="space-y-8">
             <div className="text-center space-y-1">
               <Milestone className="h-6 w-6 text-army-800 dark:text-amber-500 mx-auto" />
-              <h3 className="text-2xl font-display font-extrabold text-army-950 dark:text-white uppercase">INTERACTIVE PLATOON CHRONOLOGY</h3>
+              <h2 className="text-xl sm:text-2xl font-display font-extrabold text-army-950 dark:text-white uppercase">INTERACTIVE PLATOON CHRONOLOGY</h2>
               <p className="text-slate-500 text-xs">Explore major UGC BNCC Platoon milestones from our establishment to the current cycle</p>
             </div>
 
@@ -358,7 +369,7 @@ export default function About({ currentUser }: AboutProps) {
             <div className="flex justify-start md:justify-center items-center gap-2 overflow-x-auto pb-2 scrollbar-none max-w-xl mx-auto text-xs font-mono px-4 md:px-0">
               <button
                 onClick={() => setSelectedTimelineYear("All")}
-                className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer font-bold ${
+                className={`px-3 py-1.5 rounded-full border transition-all cursor-pointer font-bold shrink-0 whitespace-nowrap ${
                   selectedTimelineYear === "All"
                     ? "bg-amber-500 border-amber-500 text-army-950 shadow-md shadow-amber-500/10"
                     : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-amber-500/40"
@@ -370,7 +381,7 @@ export default function About({ currentUser }: AboutProps) {
                 <button
                   key={yr}
                   onClick={() => setSelectedTimelineYear(yr)}
-                  className={`px-4 py-1.5 rounded-full border transition-all cursor-pointer font-bold ${
+                  className={`px-4 py-1.5 rounded-full border transition-all cursor-pointer font-bold shrink-0 whitespace-nowrap ${
                     selectedTimelineYear === yr
                       ? "bg-army-900 dark:bg-amber-500 border-army-900 dark:border-amber-500 text-white dark:text-army-950 shadow-md"
                       : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-amber-500/40"
@@ -432,7 +443,7 @@ export default function About({ currentUser }: AboutProps) {
             <div>
               <div className="flex items-center space-x-2 mb-4 text-amber-400">
                 <Flame className="h-5 w-5" />
-                <h3 className="text-lg font-display font-bold uppercase tracking-wider">PRIMARY PLATOON OBJECTIVES</h3>
+                <h2 className="text-lg font-display font-bold uppercase tracking-wider">PRIMARY PLATOON OBJECTIVES</h2>
               </div>
               <ul className="space-y-3.5 text-xs text-army-100 dark:text-slate-300 leading-relaxed font-sans font-light list-disc list-inside">
                 {data?.objectives?.map((obj, idx) => (

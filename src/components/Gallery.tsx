@@ -2,6 +2,7 @@ import React from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ImageIcon, Grid, Tag, Calendar, Info, X, Tent } from "lucide-react";
 import { subscribeToCollection } from "../firebaseService";
+import SEO from "./SEO";
 
 interface GalleryItem {
   id: string;
@@ -104,15 +105,25 @@ export default function Gallery() {
 
   return (
     <div className="space-y-8" id="media-gallery-section">
+      <SEO
+        title="Media Gallery & Photographic Archives | UGC BNCC"
+        description="Explore photographic records of parade drills, winter training camps, social welfare drives, and cadet training exercises at Uttara Government College BNCC Platoon."
+        canonicalPath="/gallery"
+        breadcrumbs={[
+          { name: "Home", url: "/" },
+          { name: "Gallery", url: "/gallery" }
+        ]}
+      />
+
       {/* Page Header */}
       <div className="text-center max-w-2xl mx-auto space-y-3">
         <div className="inline-flex items-center space-x-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 px-3.5 py-1 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase border border-amber-500/20">
           <ImageIcon className="h-3.5 w-3.5" />
           <span>PLATOON COMMAND ARCHIVES</span>
         </div>
-        <h2 className="text-3xl md:text-4xl font-display font-black text-army-950 dark:text-white uppercase tracking-tight">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-display font-black text-army-950 dark:text-white uppercase tracking-tight">
           MEDIA GALLERY
-        </h2>
+        </h1>
         <p className="text-slate-500 dark:text-slate-400 text-xs md:text-sm font-light leading-relaxed">
           Explore photographic logs of national drills, winter regiment camps, social aid drives, and leadership training programs since 2018.
         </p>
@@ -179,7 +190,9 @@ export default function Gallery() {
                 {photo.imageUrl && !photo.imageUrl.includes("unsplash") ? (
                   <img
                     src={photo.imageUrl}
-                    alt={photo.title}
+                    alt={`Platoon Archive Photo - ${photo.title} (${photo.category})`}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-350"
                     referrerPolicy="no-referrer"
                   />

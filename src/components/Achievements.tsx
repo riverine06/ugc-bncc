@@ -1,8 +1,9 @@
 import React from "react";
 import { motion } from "motion/react";
-import { Trophy, Award, Search, Sparkles, Filter, Shield, Medal, Download, Users, Star, Plus, Check, Trash2 } from "lucide-react";
+import { Trophy, Award, Search, Sparkles, Filter, Shield, Medal, Download, Users, Star, Plus, Check, Trash2, AlertTriangle, CheckCircle2, AlertCircle, Loader2, X } from "lucide-react";
 import { User, UserRole } from "../types";
 import { subscribeToCollection, createDocument, generateId, softDeleteRecord } from "../firebaseService";
+import SEO from "./SEO";
 
 interface AchievementsProps {
   currentUser: User | null;
@@ -92,6 +93,16 @@ export default function Achievements({ currentUser }: AchievementsProps) {
 
   // Form states for adding achievements
   const [showAddForm, setShowAddForm] = React.useState(false);
+  const [submittingAward, setSubmittingAward] = React.useState(false);
+  const [deleteAwardDialog, setDeleteAwardDialog] = React.useState<{ id: string; title: string } | null>(null);
+  const [deletingAward, setDeletingAward] = React.useState(false);
+  const [awardToast, setAwardToast] = React.useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  const showNotice = (message: string, type: "success" | "error" = "success") => {
+    setAwardToast({ message, type });
+    setTimeout(() => setAwardToast(null), 4000);
+  };
+
   const [newAward, setNewAward] = React.useState<Omit<PlatoonAward, "id">>({
     title: "",
     category: "Competition",
@@ -103,6 +114,8 @@ export default function Achievements({ currentUser }: AchievementsProps) {
 
   const handleAddAward = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingAward) return;
+    setSubmittingAward(true);
     try {
       const id = generateId("ach");
       let finalRecipient = newAward.recipient;
@@ -132,21 +145,36 @@ export default function Achievements({ currentUser }: AchievementsProps) {
         description: "",
         issuedBy: "UGC Platoon Command",
       });
+      showNotice("Achievement recorded successfully!", "success");
     } catch (err: any) {
-      alert(err.message);
+      showNotice(err.message || "Failed to record achievement.", "error");
+    } finally {
+      setSubmittingAward(false);
     }
   };
 
-  const handleDeleteAward = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this achievement record?")) return;
+  const confirmDeleteAward = async () => {
+    if (!deleteAwardDialog || deletingAward) return;
+    setDeletingAward(true);
     try {
-      const itemToDel = awards.find((a) => a.id === id);
+      const itemToDel = awards.find((a) => a.id === deleteAwardDialog.id);
       if (itemToDel) {
-        await softDeleteRecord("achievements", id, itemToDel.title, itemToDel, currentUser?.email || "admin@ugcbncc.org", currentUser?.id || "admin");
-        setAwards((prev) => prev.filter((a) => a.id !== id));
+        await softDeleteRecord(
+          "achievements",
+          deleteAwardDialog.id,
+          itemToDel.title,
+          itemToDel,
+          currentUser?.email || "admin@ugcbncc.org",
+          currentUser?.id || "admin"
+        );
+        setAwards((prev) => prev.filter((a) => a.id !== deleteAwardDialog.id));
+        showNotice("Achievement moved to Recycle Bin.", "success");
       }
+      setDeleteAwardDialog(null);
     } catch (err: any) {
-      alert(err.message);
+      showNotice(err.message || "Failed to delete achievement.", "error");
+    } finally {
+      setDeletingAward(false);
     }
   };
 
@@ -189,6 +217,16 @@ export default function Achievements({ currentUser }: AchievementsProps) {
 
   return (
     <div className="space-y-10">
+      <SEO
+        title="Military Honors & Platoon Achievements | UGC BNCC"
+        description="Official honors roll, championship trophies, drill commendations, shooting badges, and national decorations earned by Uttara Government College BNCC Platoon."
+        canonicalPath="/achievements"
+        breadcrumbs={[
+          { name: "Home", url: "/" },
+          { name: "Achievements", url: "/achievements" }
+        ]}
+      />
+
       {/* Page Header */}
       <div className="relative overflow-hidden bg-army-950 border-2 border-amber-500 text-white p-8 rounded-xl shadow-2xl">
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px]"></div>
@@ -199,9 +237,9 @@ export default function Achievements({ currentUser }: AchievementsProps) {
               <Trophy className="h-3 w-3 animate-pulse" />
               <span>Platoon Achievements Register</span>
             </div>
-            <h2 className="text-3xl font-display font-extrabold tracking-tight uppercase">
+            <h1 className="text-2xl sm:text-3xl font-display font-extrabold tracking-tight uppercase">
               MILITARY HONORS & <span className="text-amber-400">ACHIEVEMENTS</span>
-            </h2>
+            </h1>
             <p className="text-xs text-army-200 font-sans max-w-2xl font-light">
               This ledger serves as the official registry of achievements, decorations, badges, championship trophies, and letters of commendation earned by UGC Platoon and its cadets.
             </p>
@@ -209,7 +247,7 @@ export default function Achievements({ currentUser }: AchievementsProps) {
           {isAdmin && (
             <button
               onClick={() => setShowAddForm(!showAddForm)}
-              className="bg-amber-500 hover:bg-amber-600 text-army-950 font-mono text-xs font-bold py-2.5 px-4 rounded shadow-lg transition-transform hover:scale-105 active:scale-95 flex items-center space-x-1 uppercase"
+              className="bg-amber-500 hover:bg-amber-600 text-army-950 font-mono text-xs font-bold py-2.5 px-4 rounded shadow-lg transition-transform hover:scale-105 active:scale-95 flex items-center space-x-1 uppercase shrink-0"
             >
               <Plus className="h-4 w-4" />
               <span>Log Achievement</span>
@@ -392,9 +430,11 @@ export default function Achievements({ currentUser }: AchievementsProps) {
                   <span className="text-[10px] text-slate-400 font-mono">{award.date}</span>
                   {isAdmin && (
                     <button
-                      onClick={() => handleDeleteAward(award.id)}
-                      className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                      type="button"
+                      onClick={() => setDeleteAwardDialog({ id: award.id, title: award.title })}
+                      className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
                       title="Delete achievement"
+                      aria-label={`Delete achievement ${award.title}`}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -474,6 +514,77 @@ export default function Achievements({ currentUser }: AchievementsProps) {
           </div>
         </div>
       </section>
+
+      {/* In-view Toast Notification */}
+      {awardToast && (
+        <div
+          role={awardToast.type === "error" ? "alert" : "status"}
+          className={`fixed bottom-6 right-6 z-50 p-4 rounded-xl shadow-2xl flex items-center space-x-3 border font-mono text-xs ${
+            awardToast.type === "success"
+              ? "bg-slate-900 border-emerald-500/50 text-emerald-200"
+              : "bg-slate-900 border-rose-500/50 text-rose-200"
+          }`}
+        >
+          {awardToast.type === "success" ? (
+            <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+          ) : (
+            <AlertCircle className="h-5 w-5 text-rose-400 shrink-0" />
+          )}
+          <span className="font-sans leading-snug">{awardToast.message}</span>
+          <button
+            type="button"
+            onClick={() => setAwardToast(null)}
+            className="text-slate-400 hover:text-white p-0.5"
+            aria-label="Dismiss notification"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteAwardDialog && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs"
+        >
+          <div className="bg-slate-900 border border-rose-500/40 rounded-xl p-5 max-w-sm w-full space-y-3 shadow-2xl">
+            <div className="flex items-center space-x-2.5 text-rose-400">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <h4 className="text-xs font-mono font-bold uppercase tracking-wider">DELETE ACHIEVEMENT RECORD</h4>
+            </div>
+            <p className="text-xs text-slate-300 font-sans leading-relaxed">
+              Move &ldquo;{deleteAwardDialog.title}&rdquo; to the institutional Recycle Bin?
+            </p>
+            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                disabled={deletingAward}
+                onClick={() => setDeleteAwardDialog(null)}
+                className="px-3 py-1.5 rounded text-xs font-mono text-slate-300 hover:bg-slate-800 border border-slate-700 min-h-[36px] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingAward}
+                onClick={confirmDeleteAward}
+                className="px-3.5 py-1.5 rounded text-xs font-mono font-bold bg-rose-600 hover:bg-rose-700 text-white min-h-[36px] flex items-center space-x-1.5 disabled:opacity-50"
+              >
+                {deletingAward ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Confirm Delete</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -2,26 +2,371 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // =========================================================================
+    // UGC BNCC PLATOON - PRODUCTION-GRADE FIRESTORE SECURITY RULES
+    // Least-privilege authorization derived strictly from Firebase Auth claims.
+    // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // ROLE & IDENTITY DEFINITIONS
+    // Never trust role claims passed in document bodies or client-side parameters.
+    // -------------------------------------------------------------------------
+
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isAdmin() {
+    function isSuperAdmin() {
       return isSignedIn() && (
+        request.auth.token.role == "SUPER_ADMIN" ||
+        request.auth.token.role == "Super Admin" ||
         request.auth.token.email.lower() == "faisal.ab4303@gmail.com" ||
         request.auth.token.email.lower() == "faisal.ab43035@gmail.com" ||
         request.auth.token.email.lower() == "admin@ugcbncc.org"
       );
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    function isAdmin() {
+      return isSuperAdmin() || (
+        isSignedIn() && (
+          request.auth.token.role == "ADMIN" ||
+          request.auth.token.role == "Admin" ||
+          request.auth.token.admin == true
+        )
+      );
     }
 
-    // Global collection rules for application collections
+    function isEditor() {
+      return isAdmin() || (
+        isSignedIn() && (
+          request.auth.token.role == "EDITOR" ||
+          request.auth.token.role == "Editor"
+        )
+      );
+    }
+
+    function isViewer() {
+      return isSignedIn() && (
+        request.auth.token.role == "VIEWER" ||
+        request.auth.token.role == "Viewer"
+      );
+    }
+
+    // Check if the current user is the owner of this cadet record
+    function isCadetSelf(cadetData) {
+      return isSignedIn() && (
+        (cadetData.userId != null && request.auth.uid == cadetData.userId) ||
+        (cadetData.email != null && request.auth.token.email != null &&
+         request.auth.token.email.lower() == cadetData.email.lower())
+      );
+    }
+
+    // Check if applicant is viewing their own submitted application
+    function isApplicationSelf(appData) {
+      return isSignedIn() && appData.email != null &&
+        request.auth.token.email != null &&
+        request.auth.token.email.lower() == appData.email.lower();
+    }
+
+    // Check if user is viewing their own event registration
+    function isRegistrationSelf(regData) {
+      return isSignedIn() && (
+        (regData.memberId != null && request.auth.uid == regData.memberId) ||
+        (regData.email != null && request.auth.token.email != null &&
+         request.auth.token.email.lower() == regData.email.lower())
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 1. SYSTEM SETTINGS & CONFIGURATION
+    // Core system contact details, about content, and organization metadata.
+    // READ: Public.
+    // WRITE: SUPER_ADMIN ONLY (Restricted from normal Admins, Editors, and public).
+    // DELETE: Denied (Protection against accidental removal of site settings).
+    // -------------------------------------------------------------------------
+    match /settings/{docId} {
+      allow read: if true;
+      allow create, update: if isSuperAdmin();
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. HOMEPAGE CONFIGURATION
+    // Hero titles, background URLs, operational mottos, and live counter stats.
+    // READ: Public.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Super-Admin only (Main document must not be purged).
+    // -------------------------------------------------------------------------
+    match /homepage/{docId} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isSuperAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. ABOUT SECTION
+    // Historical milestones, platoon oath, and objectives.
+    // READ: Public.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /about/{docId} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 4. CADETS / MEMBERS ROSTER
+    // Military dossiers, cadet profiles, service history, and qualifications.
+    // READ: Public (Allows cadet directory search and verified credential lookup).
+    // CREATE: Editor, Admin, Super-Admin.
+    // UPDATE: Editor, Admin, Super-Admin, OR Cadet Owner updating their own
+    //         profile info (CANNOT modify military rank, verified status, or ID).
+    // DELETE: Admin, Super-Admin only.
+    // -------------------------------------------------------------------------
+    match /cadets/{cadetId} {
+      allow read: if true;
+      allow create: if isEditor();
+      allow update: if isEditor() || (
+        isCadetSelf(resource.data) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'rank', 'verified', 'status', 'id', 'isArmyStaff'
+        ])
+      );
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 5. RECRUITMENT APPLICATIONS
+    // Prospective recruit submissions with personal contact and academic records.
+    // PUBLIC READ: Strictly DENIED to protect candidate privacy.
+    // CREATE: Public (Prospective applicants can submit enlistment form).
+    // READ: Editor, Admin, Super-Admin, Viewer, OR Applicant themselves.
+    // UPDATE: Editor, Admin, Super-Admin (For reviewing, approving, rejecting).
+    // DELETE: Admin, Super-Admin only.
+    // -------------------------------------------------------------------------
+    match /applications/{applicationId} {
+      allow create: if true;
+      allow read: if isEditor() || isViewer() || isApplicationSelf(resource.data);
+      allow update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 6. LEADERSHIP & CHAIN OF COMMAND
+    // Current platoon commanders, cadet officers, and appointments.
+    // READ: Public.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /leadership/{docId} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 7. FORMER PUOS (ROLL OF HONOR)
+    // Historical archive of past Platoon Under Officers.
+    // READ: Public.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /former_puos/{docId} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 8. EVENTS & DRILLS
+    // Parades, national ceremonies, Iftar Mahfil, and training schedules.
+    // READ: Public.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /events/{docId} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 9. EVENT ATTENDANCE
+    // Internal muster and drill attendance tracking.
+    // READ: Editor, Admin, Super-Admin.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /eventAttendance/{attendanceId} {
+      allow read: if isEditor();
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 10. EVENT REGISTRATIONS
+    // RSVP sign-ups for open events (e.g., Annual Iftar Mahfil).
+    // CREATE: Public (Guests and cadets may register).
+    // READ: Editor, Admin, Super-Admin, Viewer, OR Registrant themselves.
+    // UPDATE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /eventRegistrations/{regId} {
+      allow create: if true;
+      allow read: if isEditor() || isViewer() || isRegistrationSelf(resource.data);
+      allow update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 11. CAMPS
+    // Annual Training Camps, National Camps, and Battalion exercises.
+    // READ: Public.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /camps/{docId} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 12. CAMP PARTICIPANTS
+    // Cadet participation records and camp appointments.
+    // READ: Public.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /campParticipants/{docId} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 13. ACHIEVEMENTS & AWARDS
+    // Battalion medals, commendations, and competition awards.
+    // READ: Public.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /achievements/{docId} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 14. ANNOUNCEMENTS & NOTICES
+    // Official platoon orders, routine notices, and circulars.
+    // READ: Public.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /notices/{docId} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 15. GALLERY ARCHIVE
+    // Photographic evidence and event media coverage.
+    // READ: Public.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /gallery/{docId} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 16. DOCUMENT VAULT
+    // Official PDF forms, standing orders, and training manuals.
+    // READ: Public.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /documents/{docId} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 17. CADET PROMOTIONS HISTORY
+    // Official military rank advancements and promotion records.
+    // READ: Public.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /promotions/{docId} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 18. VERIFIED CERTIFICATES
+    // Official military certificates issued to cadets.
+    // READ: Public.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /certificates/{docId} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 19. ACTIVITIES & COMMUNITY SERVICE
+    // Voluntary blood donation, tree plantation, and disaster response.
+    // READ: Public.
+    // WRITE: Editor, Admin, Super-Admin.
+    // DELETE: Admin, Super-Admin.
+    // -------------------------------------------------------------------------
+    match /activities/{docId} {
+      allow read: if true;
+      allow create, update: if isEditor();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 20. AUDIT TRAIL LOGS
+    // Cryptographic audit logs recording administrative operations.
+    // READ: Admin and Super-Admin ONLY.
+    // CREATE: Authorized Editors and Admins only.
+    // UPDATE & DELETE: Strictly FORBIDDEN (Immutable audit trail).
+    // -------------------------------------------------------------------------
+    match /activityLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isEditor();
+      allow update, delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // 21. RECYCLE BIN / TRASH
+    // Temporary retention pool for soft-deleted documents.
+    // READ: Admin and Super-Admin ONLY.
+    // CREATE, UPDATE: Admin and Super-Admin ONLY.
+    // DELETE: Admin and Super-Admin ONLY (Permanent purge).
+    // -------------------------------------------------------------------------
+    match /trash/{trashId} {
+      allow read, write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 22. DEFAULT-DENY FALLBACK
+    // Block all unspecified documents, subcollections, or paths.
+    // -------------------------------------------------------------------------
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }
-

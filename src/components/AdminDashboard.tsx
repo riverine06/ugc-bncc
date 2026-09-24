@@ -20,21 +20,36 @@ import {
 } from "lucide-react";
 import { User, Member, PlatoonEvent, PlatoonApplication, BNCCRank } from "../types";
 
-// Import modular panels
+// Import primary overview panel directly for instant tab render
 import DashboardOverview from "./admin/DashboardOverview";
-import MembersManager from "./admin/MembersManager";
-import AdmissionsInbox from "./admin/AdmissionsInbox";
-import LeadershipReferences from "./admin/LeadershipReferences";
-import OperationsScheduler from "./admin/OperationsScheduler";
-import NoticeBoardCMS from "./admin/NoticeBoardCMS";
-import AchievementsCMS from "./admin/AchievementsCMS";
-import GalleryCMS from "./admin/GalleryCMS";
-import DocumentVaultCMS from "./admin/DocumentVaultCMS";
-import AuditLogsTrail from "./admin/AuditLogsTrail";
-import CmsSettingsPanel from "./admin/CmsSettingsPanel";
-import RecycleBinCMS from "./admin/RecycleBinCMS";
-import CampsCMS from "./admin/CampsCMS";
+
+// Code-split specialized administrative sub-panels on demand
+const MembersManager = React.lazy(() => import("./admin/MembersManager"));
+const AdmissionsInbox = React.lazy(() => import("./admin/AdmissionsInbox"));
+const LeadershipReferences = React.lazy(() => import("./admin/LeadershipReferences"));
+const OperationsScheduler = React.lazy(() => import("./admin/OperationsScheduler"));
+const NoticeBoardCMS = React.lazy(() => import("./admin/NoticeBoardCMS"));
+const AchievementsCMS = React.lazy(() => import("./admin/AchievementsCMS"));
+const GalleryCMS = React.lazy(() => import("./admin/GalleryCMS"));
+const DocumentVaultCMS = React.lazy(() => import("./admin/DocumentVaultCMS"));
+const AuditLogsTrail = React.lazy(() => import("./admin/AuditLogsTrail"));
+const CmsSettingsPanel = React.lazy(() => import("./admin/CmsSettingsPanel"));
+const RecycleBinCMS = React.lazy(() => import("./admin/RecycleBinCMS"));
+const CampsCMS = React.lazy(() => import("./admin/CampsCMS"));
+
+function AdminPanelSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse p-4">
+      <div className="h-7 w-48 bg-slate-200 dark:bg-slate-800 rounded"></div>
+      <div className="h-28 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl"></div>
+      <div className="h-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl"></div>
+    </div>
+  );
+}
 import { generateId, createDocument, updateDocument, softDeleteRecord } from "../firebaseService";
+
+import { AdminFeedbackProvider, useAdminFeedback } from "./admin/AdminUIFeedback";
+import SEO from "./SEO";
 
 interface AdminDashboardProps {
   stats: {
@@ -70,7 +85,7 @@ type TabType =
   | "settings"
   | "trash";
 
-export default function AdminDashboard({
+function AdminDashboardContent({
   stats,
   members,
   events,
@@ -80,8 +95,10 @@ export default function AdminDashboard({
   onViewPublicSite,
   currentUser,
 }: AdminDashboardProps) {
+  const { showToast, confirmAction, isBusy, setIsBusy } = useAdminFeedback();
   const [activeTab, setActiveTab] = React.useState<TabType>("overview");
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [isSubmittingEvent, setIsSubmittingEvent] = React.useState(false);
 
   // Events Form State (shared)
   const [editingEventId, setEditingEventId] = React.useState<string | null>(null);
@@ -116,6 +133,10 @@ export default function AdminDashboard({
 
   const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingEvent || isBusy) return;
+    setIsSubmittingEvent(true);
+    setIsBusy(true);
+
     try {
       const eventPayload = {
         ...eventForm,
@@ -125,11 +146,19 @@ export default function AdminDashboard({
 
       if (editingEventId) {
         await updateDocument("events", editingEventId, eventPayload);
-        alert("Operation details updated!");
+        showToast(
+          `Operation "${eventForm.name}" details updated successfully.`,
+          "success",
+          "OPERATION SYNCHRONIZED"
+        );
       } else {
         const id = generateId("evt");
         await createDocument("events", { id, ...eventPayload }, id);
-        alert("New Operation Scheduled!");
+        showToast(
+          `Operation "${eventForm.name}" has been registered in the schedule.`,
+          "success",
+          "OPERATION SCHEDULED"
+        );
       }
 
       setEditingEventId(null);
@@ -147,34 +176,59 @@ export default function AdminDashboard({
       });
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      showToast(err.message || "Failed to save operation details.", "error", "OPERATION FAILED");
+    } finally {
+      setIsSubmittingEvent(false);
+      setIsBusy(false);
     }
   };
 
-  const handleDeleteEvent = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete and trash operation: "${name}"?`)) return;
-    try {
-      const itemToDel = events.find((e) => e.id === id);
-      if (itemToDel) {
-        await softDeleteRecord("events", id, name, itemToDel, currentUser?.email || "admin@ugcbncc.org", currentUser?.id || "admin");
-        onRefresh();
-      }
-    } catch (err: any) {
-      alert(err.message);
-    }
+  const handleDeleteEvent = (id: string, name: string) => {
+    confirmAction({
+      title: "TRASH TACTICAL OPERATION",
+      message: `Are you sure you want to move operation "${name}" to the Recycle Bin? All event rosters and participant records will be retained in audit history.`,
+      confirmLabel: "Move to Trash",
+      isDestructive: true,
+      onConfirm: async () => {
+        const itemToDel = events.find((e) => e.id === id);
+        if (itemToDel) {
+          await softDeleteRecord(
+            "events",
+            id,
+            name,
+            itemToDel,
+            currentUser?.email || "admin@ugcbncc.org",
+            currentUser?.id || "admin"
+          );
+          showToast(`Operation "${name}" moved to Recycle Bin.`, "success", "OPERATION ARCHIVED");
+          onRefresh();
+        }
+      },
+    });
   };
 
-  const handleDeleteMember = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to move Cadet "${name}" to the Recycle Bin?`)) return;
-    try {
-      const itemToDel = members.find((m) => m.id === id);
-      if (itemToDel) {
-        await softDeleteRecord("cadets", id, name, itemToDel, currentUser?.email || "admin@ugcbncc.org", currentUser?.id || "admin");
-        onRefresh();
-      }
-    } catch (err: any) {
-      alert(err.message);
-    }
+  const handleDeleteMember = (id: string, name: string) => {
+    confirmAction({
+      title: "ARCHIVE CADET TO TRASH",
+      message: `Move Cadet "${name}" to the Recycle Bin? Associated achievements and participation honors will be safely archived without permanent data loss.`,
+      confirmLabel: "Archive Cadet",
+      isDestructive: true,
+      onConfirm: async () => {
+        const itemToDel = members.find((m) => m.id === id);
+        if (itemToDel) {
+          await softDeleteRecord(
+            "cadets",
+            id,
+            name,
+            itemToDel,
+            currentUser?.email || "admin@ugcbncc.org",
+            currentUser?.id || "admin"
+          );
+          showToast(`Cadet "${name}" archived into Recycle Bin.`, "success", "CADET ARCHIVED");
+          onRefresh();
+        }
+      },
+    });
   };
 
   // Nav Links List
@@ -247,6 +301,11 @@ export default function AdminDashboard({
 
   return (
     <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden text-slate-800 dark:text-slate-100">
+      <SEO
+        title="HQ Command Administration | Restricted Access"
+        description="Restricted administrative control system for authorized UGC BNCC Platoon leadership only."
+        noIndex={true}
+      />
       {/* 1. SIDEBAR (Desktop) */}
       <aside className="hidden md:flex w-64 shrink-0 bg-[#081e13] border-r border-[#0d2a1d] flex-col justify-between text-[#a3b899] font-sans h-full">
         <div className="flex flex-col h-full overflow-hidden">
@@ -359,20 +418,22 @@ export default function AdminDashboard({
         {/* Content pane for mobile */}
         {!mobileMenuOpen && (
           <main className="flex-1 flex flex-col overflow-hidden">
-            <div className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 flex justify-between items-center shrink-0">
-              <h2 className="font-display font-black text-slate-900 dark:text-white uppercase text-xs">
+            <div className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 flex justify-between items-center shrink-0 gap-2">
+              <h2 className="font-display font-black text-slate-900 dark:text-white uppercase text-xs truncate min-w-0">
                 {getActiveTabTitle()}
               </h2>
               <button
                 onClick={onViewPublicSite}
-                className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded text-[9px] font-bold font-mono uppercase tracking-wider flex items-center space-x-1 transition-all cursor-pointer"
+                className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded text-[9px] font-bold font-mono uppercase tracking-wider flex items-center space-x-1 transition-all cursor-pointer shrink-0"
               >
                 <span>Live Site</span>
                 <ExternalLink className="h-3 w-3" />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 bg-slate-50 dark:bg-slate-950">
-              {renderActivePanel()}
+              <React.Suspense fallback={<AdminPanelSkeleton />}>
+                {renderActivePanel()}
+              </React.Suspense>
             </div>
           </main>
         )}
@@ -396,9 +457,19 @@ export default function AdminDashboard({
 
         {/* Scroll Content panel */}
         <div className="flex-1 overflow-y-auto p-6 lg:p-8 bg-slate-50 dark:bg-slate-950">
-          {renderActivePanel()}
+          <React.Suspense fallback={<AdminPanelSkeleton />}>
+            {renderActivePanel()}
+          </React.Suspense>
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AdminDashboard(props: AdminDashboardProps) {
+  return (
+    <AdminFeedbackProvider>
+      <AdminDashboardContent {...props} />
+    </AdminFeedbackProvider>
   );
 }

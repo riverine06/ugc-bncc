@@ -679,7 +679,7 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
       {/* Search and Quick Filters Row */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-250 dark:border-slate-800 shadow-sm space-y-4 text-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="relative flex-1">
+          <div className="relative w-full md:flex-1">
             <input
               type="text"
               placeholder="Search by full name, cadet ID, or email..."
@@ -871,7 +871,7 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
 
           {/* Table container */}
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
+            <table className="w-full min-w-[720px] text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50 dark:bg-slate-850/60 border-b border-slate-200 dark:border-slate-850 text-slate-400 uppercase tracking-wider font-mono text-[10px] whitespace-nowrap">
                   <th className="py-3 px-2.5 w-9 text-center">

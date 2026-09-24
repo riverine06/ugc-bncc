@@ -396,7 +396,7 @@ export default function LeadershipReferences({ members, onRefresh }: LeadershipR
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-200/50 dark:border-slate-800/50 pt-2.5">
               {/* Sorting */}
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-slate-400 uppercase text-[9px]">Sort by:</span>
                 <button
                   onClick={() => {
@@ -454,7 +454,7 @@ export default function LeadershipReferences({ members, onRefresh }: LeadershipR
                 NO ACTIVE SECURE COMMAND ASSIGNMENTS DEFINED WITH CURRENT SELECTION.
               </div>
             ) : (
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="w-full min-w-[650px] text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-850/60 border-b border-slate-200 dark:border-slate-850 text-slate-400 uppercase tracking-wider font-mono text-[9px]">
                     <th className="p-3 w-10 text-center">

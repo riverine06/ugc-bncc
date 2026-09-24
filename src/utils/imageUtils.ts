@@ -1,12 +1,13 @@
 import { uploadFileToStorage } from "../firebase";
+import { validateImageFile, sanitizeFilename, sanitizeStorageFolder } from "./fileValidation";
 
 /**
  * Resizes and compresses an image File using HTML5 Canvas to ensure it stays small
  * (max dimension 800px, JPEG quality 0.75) so it will never exceed Firestore limits (~30-60KB).
  *
- * Then attempts to upload to Firebase Storage with a timeout (6s).
- * If Firebase Storage succeeds, returns the Storage URL.
- * If Storage upload fails, errors out, or times out, seamlessly returns the compressed Data URL.
+ * Enforces MIME and extension validation and file size restrictions.
+ * Attempts to upload to Firebase Storage. If Firebase Storage succeeds, returns the Storage URL.
+ * If Storage upload fails, errors out, or times out, seamlessly falls back to the compressed Data URL.
  */
 export async function processAndUploadImage(
   file: File,
@@ -15,15 +16,21 @@ export async function processAndUploadImage(
   quality: number = 0.75,
   onProgress?: (progress: number) => void
 ): Promise<string> {
-  // 1. Read file as Data URL
+  // 1. Strict Security & Format Validation
+  const validation = validateImageFile(file);
+  if (!validation.valid) {
+    throw new Error(validation.error || "Selected file failed security validation.");
+  }
+
+  // 2. Read file as Data URL
   const rawDataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => resolve(e.target?.result as string);
-    reader.onerror = (err) => reject(err);
+    reader.onerror = (err) => reject(new Error("Failed to read image file data."));
     reader.readAsDataURL(file);
   });
 
-  // 2. Compress via Canvas
+  // 3. Compress via Canvas
   const compressedDataUrl = await new Promise<string>((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -41,8 +48,8 @@ export async function processAndUploadImage(
         }
       }
 
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = Math.max(1, width);
+      canvas.height = Math.max(1, height);
       const ctx = canvas.getContext("2d");
       if (ctx) {
         ctx.drawImage(img, 0, 0, width, height);
@@ -71,22 +78,17 @@ export async function processAndUploadImage(
     blob = file;
   }
 
-  // 3. Attempt upload to Firebase Storage with a 6-second timeout
+  // 4. Attempt upload to Firebase Storage
+  const cleanFolder = sanitizeStorageFolder(folder);
+  const cleanFilename = sanitizeFilename(file.name);
+
   try {
-    const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const filename = `${Date.now()}_${sanitizedName}`;
-    const uploadPromise = uploadFileToStorage(blob, folder, filename, onProgress);
-
-    const timeoutPromise = new Promise<string>((_, reject) =>
-      setTimeout(() => reject(new Error("Storage upload connection timeout")), 6000)
-    );
-
-    const downloadUrl = await Promise.race([uploadPromise, timeoutPromise]);
+    const downloadUrl = await uploadFileToStorage(blob, cleanFolder, cleanFilename, onProgress);
     if (downloadUrl && typeof downloadUrl === "string" && downloadUrl.startsWith("http")) {
       return downloadUrl;
     }
-  } catch (err) {
-    console.warn("[imageUtils] Storage upload bypass triggered (using lightweight compressed Data URL fallback).", err);
+  } catch (err: any) {
+    console.warn(`[imageUtils] Firebase Storage upload error (${err?.message || err}). Falling back to safe compressed Data URL.`);
   }
 
   // Guaranteed fallback: return the lightweight compressed Data URL (~30-60KB)

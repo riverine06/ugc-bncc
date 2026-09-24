@@ -8,6 +8,8 @@ export enum UserRole {
   APPLICANT = "Applicant",
   ACTIVE_CADET = "Active Cadet",
   ALUMNI = "Alumni",
+  VIEWER = "Viewer",
+  EDITOR = "Editor",
   ADMIN = "Admin",
   SUPER_ADMIN = "Super Admin",
 }
@@ -315,4 +317,18 @@ export interface FormerPUO {
   startYear?: number;
   endYear?: number;
   status?: "Active" | "Former";
+}
+
+export interface PlatoonDocument {
+  id: string;
+  title: string;
+  category: string;
+  fileUrl: string;
+  uploadedAt: string;
+  fileType: string;
+  description: string;
+  fileSize?: string;
+  version?: string;
+  downloadCount?: number;
+  isInternal?: boolean;
 }

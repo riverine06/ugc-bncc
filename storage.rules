@@ -1,0 +1,142 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // =========================================================================
+    // AUTHORIZATION HELPER FUNCTIONS
+    // =========================================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.role == "SUPER_ADMIN" ||
+        request.auth.token.role == "Super Admin" ||
+        request.auth.token.email.lower() == "faisal.ab4303@gmail.com" ||
+        request.auth.token.email.lower() == "faisal.ab43035@gmail.com" ||
+        request.auth.token.email.lower() == "admin@ugcbncc.org"
+      );
+    }
+
+    function isAdmin() {
+      return isSuperAdmin() || (
+        isSignedIn() && (
+          request.auth.token.role == "ADMIN" ||
+          request.auth.token.role == "Admin" ||
+          request.auth.token.admin == true
+        )
+      );
+    }
+
+    function isEditor() {
+      return isAdmin() || (
+        isSignedIn() && (
+          request.auth.token.role == "EDITOR" ||
+          request.auth.token.role == "Editor"
+        )
+      );
+    }
+
+    function isViewer() {
+      return isSignedIn() && (
+        request.auth.token.role == "VIEWER" ||
+        request.auth.token.role == "Viewer"
+      );
+    }
+
+    // =========================================================================
+    // VALIDATION HELPER FUNCTIONS
+    // =========================================================================
+
+    // Validates safe image MIME types (Strictly NO SVG or HTML to prevent script execution/XSS)
+    function isSafeImage() {
+      return request.resource != null &&
+             request.resource.contentType.matches('image/(jpeg|jpg|png|webp|gif)');
+    }
+
+    // Validates safe document MIME types (PDF, MS Office docs, plain text - NO executables or scripts)
+    function isSafeDocument() {
+      return request.resource != null && (
+        request.resource.contentType.matches('application/pdf') ||
+        request.resource.contentType.matches('application/msword') ||
+        request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.wordprocessingml.document') ||
+        request.resource.contentType.matches('application/vnd.ms-excel') ||
+        request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') ||
+        request.resource.contentType.matches('application/vnd.ms-powerpoint') ||
+        request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.presentationml.presentation') ||
+        request.resource.contentType.matches('text/plain')
+      );
+    }
+
+    function isValidSize(maxBytes) {
+      return request.resource != null && request.resource.size <= maxBytes;
+    }
+
+    // =========================================================================
+    // STORAGE PATH RULES
+    // =========================================================================
+
+    // 1. Photo Gallery Archive (Regiment events, camps, celebrations)
+    match /gallery/{fileName} {
+      allow read: if true;
+      allow create, update: if isEditor() && isSafeImage() && isValidSize(15 * 1024 * 1024);
+      allow delete: if isAdmin();
+    }
+
+    // 2. Site UI Images (Banner graphics, notice attachments, camp badges, achievements)
+    match /images/{fileName} {
+      allow read: if true;
+      allow create, update: if isEditor() && isSafeImage() && isValidSize(10 * 1024 * 1024);
+      allow delete: if isEditor() || isAdmin();
+    }
+
+    // 3. Cadet Roster Profiles & Avatars
+    match /cadets/{fileName} {
+      allow read: if true;
+      allow create, update: if (isEditor() || isSignedIn()) && isSafeImage() && isValidSize(5 * 1024 * 1024);
+      allow delete: if isEditor() || isAdmin();
+    }
+
+    // 4. Recruitment & Enlistment Applications (Personal applicant photos - NOT public)
+    match /applications/{fileName} {
+      allow read: if isEditor() || isViewer();
+      allow create: if isSafeImage() && isValidSize(5 * 1024 * 1024);
+      allow update: if isEditor() && isSafeImage() && isValidSize(5 * 1024 * 1024);
+      allow delete: if isAdmin();
+    }
+
+    // 5. Public Document Vault (Cadet training manuals, SOP parade code, open clearance forms)
+    match /documents/{fileName} {
+      allow read: if true;
+      allow create, update: if isEditor() && isSafeDocument() && isValidSize(30 * 1024 * 1024);
+      allow delete: if isAdmin();
+    }
+
+    // 6. Private / Internal Administrative Documents (Confidential circulars, muster rolls, roster backups)
+    match /admin_documents/{fileName} {
+      allow read: if isEditor() || isViewer();
+      allow create, update: if isEditor() && isSafeDocument() && isValidSize(30 * 1024 * 1024);
+      allow delete: if isAdmin();
+    }
+
+    match /documents/internal/{fileName} {
+      allow read: if isEditor() || isViewer();
+      allow create, update: if isEditor() && isSafeDocument() && isValidSize(30 * 1024 * 1024);
+      allow delete: if isAdmin();
+    }
+
+    // 7. General Uploads Cache (For authorized administrators)
+    match /uploads/{fileName} {
+      allow read: if true;
+      allow create, update: if isEditor() && (isSafeImage() || isSafeDocument()) && isValidSize(10 * 1024 * 1024);
+      allow delete: if isAdmin();
+    }
+
+    // 8. Default-Deny: Block all other paths and arbitrary unauthenticated uploads
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

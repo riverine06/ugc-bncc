@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
-import { getAnalytics, isSupported as isAnalyticsSupported } from "firebase/analytics";
+import { getAnalytics, isSupported as isAnalyticsSupported, logEvent } from "firebase/analytics";
 import { getMessaging, isSupported as isMessagingSupported } from "firebase/messaging";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
@@ -90,10 +90,14 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // Firebase Storage
 export const storage = getStorage(app);
 
+import { sanitizeFilename, sanitizeStorageFolder, formatStorageErrorMessage } from "./utils/fileValidation";
+
 /**
- * Uploads a file to Firebase Storage with progress tracking.
- * @param file The file to upload.
- * @param folder The folder path (e.g., 'cadets', 'gallery', 'announcements').
+ * Uploads a file to Firebase Storage with resilient progress reporting,
+ * filename/path sanitization, and timeout handling.
+ * @param file The file or blob to upload.
+ * @param folder The target folder (e.g., 'cadets', 'gallery', 'images', 'documents').
+ * @param filename Optional custom filename (will be sanitized).
  * @param onProgress Optional callback for progress percentage (0 - 100).
  */
 export const uploadFileToStorage = (
@@ -104,8 +108,11 @@ export const uploadFileToStorage = (
 ): Promise<string> => {
   return new Promise((resolve, reject) => {
     try {
-      const name = filename || `${Date.now()}_${(file as any).name || "blob"}`;
-      const storageRef = ref(storage, `${folder}/${name}`);
+      const cleanFolder = sanitizeStorageFolder(folder);
+      const originalName = filename || (file instanceof File ? file.name : "upload.bin");
+      const cleanName = sanitizeFilename(originalName);
+      
+      const storageRef = ref(storage, `${cleanFolder}/${cleanName}`);
       const uploadTask = uploadBytesResumable(storageRef, file);
 
       let isSettled = false;
@@ -117,16 +124,18 @@ export const uploadFileToStorage = (
           } catch (e) {
             // ignore cancel error
           }
-          reject(new Error("Firebase Storage upload connection timeout (4.5s)"));
+          reject(new Error("Firebase Storage connection timed out (20s). Please check your internet connection."));
         }
-      }, 4500);
+      }, 20000);
 
       uploadTask.on(
         "state_changed",
         (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          if (onProgress) {
-            onProgress(Math.round(progress));
+          if (snapshot.totalBytes > 0) {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            if (onProgress) {
+              onProgress(Math.min(99, Math.round(progress)));
+            }
           }
         },
         (error) => {
@@ -134,7 +143,8 @@ export const uploadFileToStorage = (
             isSettled = true;
             clearTimeout(timeoutId);
             console.error("Firebase Storage Upload Error:", error);
-            reject(error);
+            const userFriendlyMsg = formatStorageErrorMessage(error);
+            reject(new Error(userFriendlyMsg));
           }
         },
         async () => {
@@ -142,32 +152,41 @@ export const uploadFileToStorage = (
             isSettled = true;
             clearTimeout(timeoutId);
             try {
+              if (onProgress) onProgress(100);
               const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
               resolve(downloadUrl);
             } catch (err) {
-              reject(err);
+              reject(new Error(formatStorageErrorMessage(err)));
             }
           }
         }
       );
     } catch (err) {
-      reject(err);
+      reject(new Error(formatStorageErrorMessage(err)));
     }
   });
 };
 
 /**
- * Deletes a file from Firebase Storage given its download URL.
- * @param url The public download URL.
+ * Deletes a file from Firebase Storage given its download URL or storage path.
+ * Handles missing objects and errors gracefully without throwing.
+ * @param url The public download URL or storage reference path.
  */
 export const deleteFileFromStorage = async (url: string): Promise<void> => {
-  if (!url || !url.startsWith("http")) return;
+  if (!url || typeof url !== "string") return;
+  if (!url.startsWith("http") && !url.startsWith("gs://")) return;
+  
   try {
     const fileRef = ref(storage, url);
     await deleteObject(fileRef);
-    console.log(`[Firebase Storage] Deleted file: ${url}`);
-  } catch (err) {
-    console.warn(`[Firebase Storage] Failed to delete file or file doesn't exist: ${url}`, err);
+    console.log(`[Firebase Storage] File deleted successfully: ${url}`);
+  } catch (err: any) {
+    // If file is already deleted or not found, it's not a failure
+    if (err?.code === "storage/object-not-found") {
+      console.log(`[Firebase Storage] Object already purged from storage: ${url}`);
+      return;
+    }
+    console.warn(`[Firebase Storage] Could not delete file: ${url}`, err?.message || err);
   }
 };
 
@@ -201,7 +220,6 @@ export const logFirebaseEvent = async (eventName: string, params?: Record<string
   try {
     const supported = await isAnalyticsSupported();
     if (supported && analytics) {
-      const { logEvent } = await import("firebase/analytics");
       logEvent(analytics, eventName, params);
       console.log(`[Firebase Analytics] Event logged: ${eventName}`, params);
     }

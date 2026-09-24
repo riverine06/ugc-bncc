@@ -434,7 +434,7 @@ export default function AchievementsCMS({ members, onRefresh }: AchievementsCMSP
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-850 pt-3">
               {/* Sort by controls */}
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-slate-400 uppercase text-[10px]">Sort by:</span>
                 <button
                   onClick={() => {

@@ -616,7 +616,7 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
         <div className="p-4 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 space-y-3">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             {/* Search */}
-            <div className="relative flex-1 max-w-md">
+            <div className="relative w-full md:max-w-md">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 type="text"
@@ -648,7 +648,7 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800 pt-3">
             {/* Sorting Toggles */}
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-slate-400 uppercase text-[10px]">Sort by:</span>
               <button
                 onClick={() => {
@@ -919,10 +919,10 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
             </div>
 
             {/* Sub Tabs Bar */}
-            <div className="bg-slate-950 px-4 pt-3 border-b border-slate-800 flex items-center space-x-2 shrink-0">
+            <div className="bg-slate-950 px-4 pt-3 border-b border-slate-800 flex items-center space-x-2 shrink-0 overflow-x-auto">
               <button
                 onClick={() => setParticipantsSubTab("list")}
-                className={`px-4 py-2 text-xs font-mono font-bold uppercase rounded-t-lg transition cursor-pointer flex items-center space-x-1.5 ${
+                className={`px-3 sm:px-4 py-2 text-[11px] sm:text-xs font-mono font-bold uppercase rounded-t-lg transition cursor-pointer flex items-center space-x-1.5 whitespace-nowrap shrink-0 ${
                   participantsSubTab === "list"
                     ? "bg-slate-900 text-amber-400 border-t-2 border-x border-amber-500/60"
                     : "text-slate-400 hover:text-slate-200"
@@ -934,7 +934,7 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
 
               <button
                 onClick={() => setParticipantsSubTab("add")}
-                className={`px-4 py-2 text-xs font-mono font-bold uppercase rounded-t-lg transition cursor-pointer flex items-center space-x-1.5 ${
+                className={`px-3 sm:px-4 py-2 text-[11px] sm:text-xs font-mono font-bold uppercase rounded-t-lg transition cursor-pointer flex items-center space-x-1.5 whitespace-nowrap shrink-0 ${
                   participantsSubTab === "add"
                     ? "bg-slate-900 text-amber-400 border-t-2 border-x border-amber-500/60"
                     : "text-slate-400 hover:text-slate-200"

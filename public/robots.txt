@@ -1,0 +1,28 @@
+# robots.txt for UGC BNCC Platoon Management System
+# Official portal of Uttara Government College BNCC Platoon
+
+User-agent: *
+Allow: /
+Allow: /about
+Allow: /leadership
+Allow: /directory
+Allow: /events
+Allow: /recruitment
+Allow: /contact
+Allow: /achievements
+Allow: /documents
+Allow: /gallery
+
+# Restrict indexing of administrative dashboard, login endpoints, and private documents
+Disallow: /admin
+Disallow: /admin/
+Disallow: /admin/*
+Disallow: /login
+Disallow: /api/
+Disallow: /api/*
+
+# Crawl-delay for balanced crawler performance
+Crawl-delay: 1
+
+# Sitemap reference
+Sitemap: https://ugcbncc.org/sitemap.xml

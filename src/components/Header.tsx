@@ -186,13 +186,13 @@ const Header = React.memo(function Header({
       {/* Top Gold & Green Military Accent Line */}
       <div className="h-1 bg-gradient-to-r from-[#FFB400] via-[#3D5A40] to-[#FFB400] w-full" />
 
-      <div className="max-w-[1536px] mx-auto px-3 sm:px-4 xl:px-6 2xl:px-8">
-        <div className="flex flex-nowrap items-center justify-between h-20 gap-2 xl:gap-4 2xl:gap-6 w-full">
+      <div className="max-w-[1536px] mx-auto px-2 sm:px-4 xl:px-6 2xl:px-8">
+        <div className="flex flex-nowrap items-center justify-between h-20 gap-1.5 sm:gap-2 xl:gap-4 2xl:gap-6 w-full">
           
           {/* LEFT: Official BNCC Logo & Title (flex-shrink-0) */}
           <Link
             to="/"
-            className="flex flex-nowrap items-center space-x-2 xl:space-x-2.5 2xl:space-x-3 cursor-pointer shrink-0 group min-w-0 my-auto"
+            className="flex flex-nowrap items-center space-x-1.5 sm:space-x-2 xl:space-x-2.5 2xl:space-x-3 cursor-pointer shrink-0 group min-w-0 my-auto"
             onClick={() => {
               if (location.pathname === "/") {
                 window.scrollTo({ top: 0, behavior: "smooth" });
@@ -203,16 +203,16 @@ const Header = React.memo(function Header({
             }}
           >
             {/* Official BNCC Crest Logo */}
-            <div className="flex items-center justify-center shrink-0 p-1 rounded-xl bg-slate-900/40 border border-amber-500/20 group-hover:border-amber-500/50 transition-all">
-              <BNCCLogo size={38} className="w-[32px] h-[32px] sm:w-[36px] sm:h-[36px] xl:w-[40px] xl:h-[40px] 2xl:w-[46px] 2xl:h-[46px] drop-shadow-md shrink-0" />
+            <div className="flex items-center justify-center shrink-0 p-0.5 sm:p-1 rounded-xl bg-slate-900/40 border border-amber-500/20 group-hover:border-amber-500/50 transition-all">
+              <BNCCLogo size={34} className="w-[28px] h-[28px] sm:w-[36px] sm:h-[36px] xl:w-[40px] xl:h-[40px] 2xl:w-[46px] 2xl:h-[46px] drop-shadow-md shrink-0" />
             </div>
             
             {/* Logo Text columns */}
             <div className="flex flex-col select-none justify-center min-w-0 shrink-0">
-              <div className="font-sans font-black text-[12px] sm:text-[13px] xl:text-[14px] 2xl:text-[16px] leading-tight tracking-wider text-[#FFB400] uppercase whitespace-nowrap">
+              <div className="font-sans font-black text-[11px] sm:text-[13px] xl:text-[14px] 2xl:text-[16px] leading-tight tracking-wider text-[#FFB400] uppercase whitespace-nowrap">
                 UGC BNCC
               </div>
-              <div className="font-sans font-black text-[10px] sm:text-[11px] xl:text-[12px] 2xl:text-[14px] leading-tight tracking-wider text-slate-100 uppercase whitespace-nowrap">
+              <div className="font-sans font-black text-[9px] sm:text-[11px] xl:text-[12px] 2xl:text-[14px] leading-tight tracking-wider text-slate-100 uppercase whitespace-nowrap">
                 DIGITAL PLATOON
               </div>
               <div className="font-sans text-[7px] sm:text-[8px] 2xl:text-[8.5px] font-bold text-slate-400 tracking-widest leading-none mt-0.5 uppercase whitespace-nowrap hidden 2xl:block">
@@ -222,7 +222,7 @@ const Header = React.memo(function Header({
           </Link>
 
           {/* CENTER: Desktop Navigation Menu (flex-1, justify-center, items-center, whitespace-nowrap, min-w-0, flex-nowrap) */}
-          <nav className="hidden xl:flex items-center justify-center flex-1 min-w-0 flex-nowrap space-x-1.5 xl:space-x-2 2xl:space-x-3 my-auto whitespace-nowrap px-2">
+          <nav className="hidden xl:flex items-center justify-center flex-1 min-w-0 flex-nowrap space-x-1 xl:space-x-1.5 2xl:space-x-2.5 my-auto whitespace-nowrap px-1 xl:px-2">
             {navItems.map((item) => {
               return (
                 <NavLink
@@ -231,7 +231,7 @@ const Header = React.memo(function Header({
                   end={item.path === "/"}
                   onClick={() => handleNavClick(item.id, item.path)}
                   className={({ isActive }) =>
-                    `relative px-2 xl:px-2.5 2xl:px-3 py-1.5 rounded-lg font-sans text-[10px] xl:text-[11px] 2xl:text-xs tracking-normal 2xl:tracking-wider transition-all duration-200 uppercase whitespace-nowrap shrink-0 flex items-center ${
+                    `relative px-1.5 xl:px-2 2xl:px-3 py-1.5 rounded-lg font-sans text-[10px] xl:text-[11px] 2xl:text-xs tracking-normal 2xl:tracking-wider transition-all duration-200 uppercase whitespace-nowrap shrink-0 flex items-center ${
                       isActive
                         ? "text-[#FFB400] font-black bg-[#0E1A2B] border border-amber-500/50 shadow-[0_0_12px_rgba(255,180,0,0.25)] drop-shadow-[0_0_5px_rgba(255,180,0,0.3)]"
                         : "text-slate-300 font-bold hover:text-white hover:bg-slate-800/50"
@@ -256,7 +256,7 @@ const Header = React.memo(function Header({
           </nav>
 
           {/* RIGHT: Search (Compact Expandable Icon), Theme Toggle, Login Button (flex-shrink-0) */}
-          <div className="hidden xl:flex items-center space-x-2 xl:space-x-2.5 2xl:space-x-3 shrink-0 ml-auto my-auto">
+          <div className="hidden xl:flex items-center space-x-1.5 xl:space-x-2 2xl:space-x-3 shrink-0 ml-auto my-auto">
             {/* Expandable Search Component */}
             <div className="relative flex items-center">
               {isSearchActive ? (
@@ -283,7 +283,7 @@ const Header = React.memo(function Header({
                         setSearchExpanded(false);
                       }
                     }}
-                    className="bg-[#0E1A2B] border border-[#22324A] focus:border-[#FFB400] rounded-lg py-1.5 pl-8 pr-6 text-[10px] xl:text-[11px] text-slate-100 placeholder-slate-400 font-mono shadow-inner w-36 xl:w-44 transition-all focus:outline-none"
+                    className="bg-[#0E1A2B] border border-[#22324A] focus:border-[#FFB400] rounded-lg py-1.5 pl-8 pr-6 text-[10px] xl:text-[11px] text-slate-100 placeholder-slate-400 font-mono shadow-inner w-32 xl:w-40 2xl:w-48 transition-all focus:outline-none"
                     autoFocus
                   />
                   <Search className="absolute left-2.5 h-4 w-4 text-amber-400 pointer-events-none" />
@@ -308,7 +308,7 @@ const Header = React.memo(function Header({
                   title="Search dossiers"
                   aria-label="Open search input"
                 >
-                  <Search className="h-5 w-5 text-slate-300 group-hover:text-amber-400 transition-transform group-hover:scale-105" />
+                  <Search className="h-4.5 w-4.5 xl:h-5 xl:w-5 text-slate-300 group-hover:text-amber-400 transition-transform group-hover:scale-105" />
                 </button>
               )}
             </div>
@@ -318,7 +318,7 @@ const Header = React.memo(function Header({
             {/* Premium Sliding Dark & Light Theme Switcher */}
             <button
               onClick={onToggleTheme}
-              className="relative flex items-center bg-[#07111D] border border-amber-500/30 hover:border-amber-500/60 rounded-full p-1 w-13 xl:w-14 h-7 transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500/50 shadow-inner shrink-0"
+              className="relative flex items-center bg-[#07111D] border border-amber-500/30 hover:border-amber-500/60 rounded-full p-1 w-12 xl:w-13 2xl:w-14 h-7 transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500/50 shadow-inner shrink-0"
               title={theme === "light" ? "Switch to Tactical Dark Force Mode" : "Switch to Sunlight Cadet Mode"}
               aria-label="Toggle dark/light theme"
             >
@@ -357,7 +357,7 @@ const Header = React.memo(function Header({
                   onOpenLogin();
                 }
               }}
-              className="bg-[#FFB400] hover:bg-[#FFC02D] text-slate-950 font-sans font-black text-[10px] xl:text-[11px] 2xl:text-xs tracking-wider px-2.5 xl:px-3 2xl:px-3.5 py-2 rounded-lg shadow-md hover:shadow-lg transition-all active:scale-95 uppercase cursor-pointer shrink-0 whitespace-nowrap flex items-center"
+              className="bg-[#FFB400] hover:bg-[#FFC02D] text-slate-950 font-sans font-black text-[10px] xl:text-[11px] 2xl:text-xs tracking-wider px-2 xl:px-2.5 2xl:px-3.5 py-1.5 xl:py-2 rounded-lg shadow-md hover:shadow-lg transition-all active:scale-95 uppercase cursor-pointer shrink-0 whitespace-nowrap flex items-center"
             >
               {user ? (
                 user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN ? (
@@ -391,26 +391,26 @@ const Header = React.memo(function Header({
           </div>
 
           {/* Mobile & Tablet Controls (<1280px / xl:hidden) */}
-          <div className="flex items-center space-x-2 shrink-0 xl:hidden my-auto">
-            {/* Tablet Compact Search Icon Button */}
+          <div className="flex items-center space-x-1 sm:space-x-2 shrink-0 xl:hidden my-auto">
+            {/* Mobile & Tablet Search Icon Button */}
             <button
               onClick={() => {
                 setMobileMenuOpen(true);
               }}
-              className="p-2 rounded-lg bg-[#0E1A2B] border border-[#22324A] text-slate-300 hover:text-amber-400 transition-all cursor-pointer shadow-sm shrink-0 md:block hidden"
+              className="p-1.5 sm:p-2 rounded-lg bg-[#0E1A2B] border border-[#22324A] text-slate-300 hover:text-amber-400 transition-all cursor-pointer shadow-sm shrink-0"
               title="Search"
               aria-label="Open mobile search menu"
             >
-              <Search className="h-5 w-5" />
+              <Search className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
 
             {/* Mobile/Tablet Theme Toggle */}
             <button
               onClick={onToggleTheme}
-              className="p-2 rounded-lg bg-[#0E1A2B] border border-[#22324A] text-amber-400 hover:text-white transition-all cursor-pointer shadow-sm shrink-0"
+              className="p-1.5 sm:p-2 rounded-lg bg-[#0E1A2B] border border-[#22324A] text-amber-400 hover:text-white transition-all cursor-pointer shadow-sm shrink-0"
               aria-label="Toggle theme"
             >
-              {theme === "light" ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+              {theme === "light" ? <Moon className="h-4 w-4 sm:h-5 sm:w-5" /> : <Sun className="h-4 w-4 sm:h-5 sm:w-5" />}
             </button>
 
             {/* Login / Portal Button */}
@@ -422,7 +422,7 @@ const Header = React.memo(function Header({
                   onOpenLogin();
                 }
               }}
-              className="bg-[#FFB400] text-slate-950 px-3 py-2 rounded-lg text-[11px] font-black tracking-wide uppercase shadow-sm shrink-0 whitespace-nowrap"
+              className="bg-[#FFB400] text-slate-950 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-[11px] font-black tracking-wide uppercase shadow-sm shrink-0 whitespace-nowrap"
             >
               {user ? (
                 user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN ? (
@@ -438,10 +438,10 @@ const Header = React.memo(function Header({
             {/* Drawer Hamburger Menu Toggle Button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="inline-flex items-center justify-center p-2 rounded-lg text-slate-200 hover:text-white bg-[#0E1A2B] border border-[#22324A] hover:bg-slate-800/80 focus:outline-none shrink-0 cursor-pointer"
+              className="inline-flex items-center justify-center p-1.5 sm:p-2 rounded-lg text-slate-200 hover:text-white bg-[#0E1A2B] border border-[#22324A] hover:bg-slate-800/80 focus:outline-none shrink-0 cursor-pointer"
               aria-label="Toggle mobile navigation menu"
             >
-              {mobileMenuOpen ? <X className="h-6 w-6 text-amber-400" /> : <Menu className="h-6 w-6" />}
+              {mobileMenuOpen ? <X className="h-5 w-5 sm:h-6 sm:w-6 text-amber-400" /> : <Menu className="h-5 w-5 sm:h-6 sm:w-6" />}
             </button>
           </div>
 
@@ -493,9 +493,18 @@ const Header = React.memo(function Header({
                       onChangeTab("directory");
                     }
                   }}
-                  className="bg-[#0E1A2B] border border-[#22324A] rounded-lg py-2 pl-9 pr-3 text-xs focus:outline-none focus:border-[#FFB400] w-full text-slate-100 placeholder-slate-400 font-mono"
+                  className="bg-[#0E1A2B] border border-[#22324A] rounded-lg py-2 pl-9 pr-8 text-xs focus:outline-none focus:border-[#FFB400] w-full text-slate-100 placeholder-slate-400 font-mono"
                 />
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                {searchQuery && (
+                  <button
+                    onClick={() => onSearch("")}
+                    className="absolute right-2 top-2 p-0.5 text-slate-400 hover:text-white rounded cursor-pointer"
+                    title="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
             </div>
 

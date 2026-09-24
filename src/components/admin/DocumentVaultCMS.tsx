@@ -4,6 +4,7 @@ import {
   Search, ArrowUpDown, ChevronLeft, ChevronRight, Copy, X, AlertTriangle, Check, Download 
 } from "lucide-react";
 import { uploadFileToStorage, deleteFileFromStorage, auth } from "../../firebase";
+import { validateDocumentFile } from "../../utils/fileValidation";
 import { subscribeToCollection, createDocument, updateDocument, softDeleteRecord, generateId } from "../../firebaseService";
 import { documentsService } from "../../services/documents";
 
@@ -51,6 +52,7 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
     description: "",
     fileSize: "1.2 MB",
     downloadUrl: "#",
+    isInternal: false,
   });
 
   const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
@@ -63,11 +65,6 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
 
   React.useEffect(() => {
     setLoading(true);
-    // Seed default documents if empty first
-    documentsService.seedDefaultDocumentsIfEmpty().catch((err) => {
-      console.warn("Seeding documents error:", err);
-    });
-
     const unsubscribe = subscribeToCollection<any>("documents", (items) => {
       setDocs(items);
       setSelectedIds([]);
@@ -84,6 +81,7 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
       description: doc.description || "",
       fileSize: doc.fileSize || "1.2 MB",
       downloadUrl: doc.fileUrl || doc.downloadUrl || "#",
+      isInternal: !!doc.isInternal || doc.category === "Internal",
     });
     setShowForm(true);
   };
@@ -96,6 +94,7 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
       description: "",
       fileSize: "1.2 MB",
       downloadUrl: "#",
+      isInternal: false,
     });
   };
 
@@ -115,6 +114,7 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
           fileSize: form.fileSize,
           fileUrl: form.downloadUrl,
           downloadUrl: form.downloadUrl,
+          isInternal: !!form.isInternal,
         });
         showToast(`Document "${form.title}" updated successfully!`, "success");
       } else {
@@ -130,6 +130,7 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
           uploadedAt: new Date().toISOString(),
           fileType: "pdf",
           downloadCount: 0,
+          isInternal: !!form.isInternal,
         }, id);
         showToast(`Document "${form.title}" registered & published!`, "success");
       }
@@ -145,6 +146,14 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
   const handleDocumentFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Strict validation
+    const validation = validateDocumentFile(file, 25 * 1024 * 1024);
+    if (!validation.valid) {
+      showToast(validation.error || "Please select a valid document under 25MB.", "error");
+      if (e.target) e.target.value = "";
+      return;
+    }
 
     setDocUploading(true);
     setDocProgress(0);
@@ -164,15 +173,15 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
         });
       }
 
-      const cleanFilename = file.name.replace(/\s+/g, "_");
-      const filename = `${Date.now()}_${cleanFilename}`;
+      // If document is classified as Internal/Restricted, upload to protected admin_documents path
+      const targetFolder = form.isInternal || form.category === "Internal" ? "admin_documents" : "documents";
       let downloadUrl = "";
 
       try {
-        downloadUrl = await uploadFileToStorage(file, "documents", filename, (p) => {
+        downloadUrl = await uploadFileToStorage(file, targetFolder, validation.cleanFilename, (p) => {
           setDocProgress(p);
         });
-      } catch (storageErr) {
+      } catch (storageErr: any) {
         console.warn("Firebase Storage upload failed or timed out, using fallback encoding:", storageErr);
         setDocProgress(50);
         downloadUrl = await new Promise<string>((resolve, reject) => {
@@ -194,12 +203,13 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
         fileSize: sizeStr,
         title: autoTitle,
       }));
-      showToast(`Document "${file.name}" attached successfully! Size synced (${sizeStr}) & Download URL assigned.`, "success");
+      showToast(`Document "${file.name}" uploaded successfully! (${sizeStr}) [Path: ${targetFolder}]`, "success");
     } catch (err: any) {
       showToast(`File upload failed: ${err.message || err}`, "error");
     } finally {
       setDocUploading(false);
       setDocProgress(null);
+      if (e.target) e.target.value = "";
     }
   };
 
@@ -455,12 +465,12 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
               </div>
 
               {/* Filtering */}
-              <div className="flex items-center space-x-1.5 shrink-0 font-mono text-[10px]">
-                <span className="text-slate-400 uppercase text-[9px]">Category:</span>
+              <div className="flex items-center space-x-1.5 shrink-0 font-mono text-[10px] w-full sm:w-auto">
+                <span className="text-slate-400 uppercase text-[9px] shrink-0">Category:</span>
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-850 p-1 rounded font-semibold"
+                  className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-850 p-1.5 rounded font-semibold w-full sm:w-auto text-[10px]"
                 >
                   <option value="All">All Categories</option>
                   <option value="Manual">SOP Training Manual</option>
@@ -473,7 +483,7 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-850 pt-2.5">
               {/* Sorting */}
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-slate-400 uppercase text-[9px]">Sort by:</span>
                 <button
                   onClick={() => {
@@ -552,13 +562,13 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
               return (
                 <div
                   key={doc.id}
-                  className={`bg-white dark:bg-slate-900 rounded-xl border p-4 shadow-sm flex items-center justify-between gap-4 transition-all hover:shadow-md ${
+                  className={`bg-white dark:bg-slate-900 rounded-xl border p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all hover:shadow-md ${
                     isSelected 
                       ? "border-amber-500 bg-amber-500/5 ring-1 ring-amber-500/10" 
                       : "border-slate-200 dark:border-slate-800"
                   }`}
                 >
-                  <div className="flex items-start space-x-3.5">
+                  <div className="flex items-start space-x-3.5 min-w-0 flex-1">
                     <div className="flex items-center space-x-2 mt-1 shrink-0">
                       <input
                         type="checkbox"
@@ -566,24 +576,24 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
                         onChange={() => handleToggleSelect(doc.id)}
                         className="rounded border-slate-300 dark:border-slate-700 text-amber-500 focus:ring-amber-500 h-3.5 w-3.5 cursor-pointer"
                       />
-                      <div className="p-3 bg-red-50 dark:bg-red-950/40 rounded-xl text-red-700 dark:text-red-400 shrink-0">
-                        <FileText className="h-5 w-5" />
+                      <div className="p-2.5 sm:p-3 bg-red-50 dark:bg-red-950/40 rounded-xl text-red-700 dark:text-red-400 shrink-0">
+                        <FileText className="h-4 w-4 sm:h-5 sm:w-5" />
                       </div>
                     </div>
-                    <div>
-                      <h4 className="font-display font-bold text-slate-900 dark:text-white text-xs">
+                    <div className="min-w-0">
+                      <h4 className="font-display font-bold text-slate-900 dark:text-white text-xs break-words">
                         {doc.title}
                       </h4>
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                      <p className="text-[10px] text-slate-400 font-mono mt-0.5 break-words">
                         Category: <span className="text-amber-500 uppercase font-bold">{doc.category}</span> | Size: {doc.fileSize} | Published: {doc.uploadedAt ? doc.uploadedAt.split("T")[0] : doc.date || ""}
                       </p>
-                      <p className="text-[11px] text-slate-600 dark:text-slate-400 font-sans mt-1.5 leading-relaxed">
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 font-sans mt-1.5 leading-relaxed break-words">
                         {doc.description}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center space-x-1 shrink-0">
+                  <div className="flex items-center space-x-1 shrink-0 self-end sm:self-center pt-2 sm:pt-0 border-t border-slate-100 dark:border-slate-800 sm:border-t-0 w-full sm:w-auto justify-end">
                     <button
                       onClick={() => {
                         const targetUrl = doc.fileUrl || doc.downloadUrl;
@@ -693,13 +703,21 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
                   <label className="font-mono text-slate-500 uppercase text-[9px]">Document Category</label>
                   <select
                     value={form.category}
-                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setForm({
+                        ...form,
+                        category: val,
+                        isInternal: val === "Internal" ? true : form.isInternal
+                      });
+                    }}
                     className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-2 w-full text-slate-700 dark:text-slate-300 focus:outline-none focus:border-amber-500"
                   >
                     <option value="Manual">SOP Training Manual</option>
                     <option value="Statute">Parliament Statute</option>
                     <option value="Notice">Regiment Circular</option>
                     <option value="Form">Admission Forms / PDF</option>
+                    <option value="Internal">Internal Administrative / Confidential</option>
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -712,6 +730,39 @@ export default function DocumentVaultCMS({ onRefresh }: DocumentVaultCMSProps) {
                     onChange={(e) => setForm({ ...form, fileSize: e.target.value })}
                     className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-3 w-full text-slate-900 dark:text-slate-100 focus:outline-none"
                   />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-mono text-slate-500 uppercase text-[9px] flex items-center justify-between">
+                  <span>Access Classification (Security)</span>
+                  <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded font-mono ${form.isInternal ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"}`}>
+                    {form.isInternal ? "RESTRICTED / INTERNAL ONLY" : "PUBLIC CADET VAULT"}
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, isInternal: false })}
+                    className={`py-1.5 px-2 rounded border text-left flex items-center space-x-1.5 cursor-pointer transition-all ${
+                      !form.isInternal
+                        ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 font-bold"
+                        : "border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    <span>🌐 Public Document</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, isInternal: true })}
+                    className={`py-1.5 px-2 rounded border text-left flex items-center space-x-1.5 cursor-pointer transition-all ${
+                      form.isInternal
+                        ? "border-red-500 bg-red-50/50 dark:bg-red-950/30 text-red-800 dark:text-red-300 font-bold"
+                        : "border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    <span>🔒 Restricted / Internal</span>
+                  </button>
                 </div>
               </div>
 

@@ -5,11 +5,12 @@
 
 import React from "react";
 import { motion } from "motion/react";
-import { Shield, Key, Mail, X, AlertTriangle } from "lucide-react";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, signInWithRedirect, GoogleAuthProvider } from "firebase/auth";
+import { Shield, Key, Mail, X } from "lucide-react";
+import { signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, GoogleAuthProvider } from "firebase/auth";
 import { auth, db } from "../firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { User, UserRole, Member, MemberStatus } from "../types";
+import { authService } from "../services/auth";
 
 interface LoginModalProps {
   onClose: () => void;
@@ -38,104 +39,27 @@ export default function LoginModal({ onClose, onLoginSuccess }: LoginModalProps)
     setError(null);
 
     try {
-      let firebaseUser;
-      try {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        firebaseUser = userCredential.user;
-      } catch (innerErr: any) {
-        // If it's auth/operation-not-allowed or any other auth error, but email matches the admin accounts, support local login fallback
-        const isPresetAdmin = email.toLowerCase() === "admin@ugcbncc.org" || email.toLowerCase() === "faisal.ab4303@gmail.com";
-        if (isPresetAdmin) {
-          // Attempt candidate passwords or auto-creation
-          const safePass = password.length >= 6 ? password : password.padEnd(6, "0");
-          const candidatePasswords = Array.from(new Set([
-            safePass,
-            password,
-            "admin123",
-            "123456",
-            "admin0",
-            "admin@ugcbncc.org",
-            "faisal.ab4303@gmail.com"
-          ]));
+      // 1. Authenticate strictly through Firebase Authentication
+      const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      const firebaseUser = userCredential.user;
 
-          for (const candPass of candidatePasswords) {
-            try {
-              const userCredential = await signInWithEmailAndPassword(auth, email, candPass);
-              firebaseUser = userCredential.user;
-              if (firebaseUser) break;
-            } catch (candErr) {
-              // try next candidate
-            }
-          }
-
-          if (!firebaseUser) {
-            try {
-              console.log("[LoginModal] Attempting auto-create admin account in Firebase Auth...");
-              const userCredential = await createUserWithEmailAndPassword(auth, email, safePass);
-              firebaseUser = userCredential.user;
-            } catch (createErr: any) {
-              console.warn("[LoginModal] Auto-create admin failed, proceeding with local fallback:", createErr);
-            }
-          }
-        }
-
-        if (!firebaseUser && isPresetAdmin) {
-          console.log("[LoginModal] Authentication provider disabled/failed. Initiating local fallback session...");
-          const fakeUid = "local-admin-uid-99";
-          const role = UserRole.SUPER_ADMIN;
-          
-          let loggedMember: Member | null = null;
-          try {
-            const querySnap = await getDocs(query(collection(db, "cadets"), where("email", "==", email.toLowerCase())));
-            if (!querySnap.empty) {
-              loggedMember = querySnap.docs[0].data() as Member;
-            }
-          } catch (docErr) {
-            console.warn("Could not load cadet details for local fallback:", docErr);
-          }
-
-          const loggedUser: User = {
-            id: fakeUid,
-            email: email.toLowerCase(),
-            role,
-            memberId: loggedMember?.id || null,
-            createdAt: new Date().toISOString()
-          };
-
-          const sessionPayload = {
-            id: fakeUid,
-            user: loggedUser,
-            member: loggedMember
-          };
-
-          localStorage.setItem("ugc_bncc_token", fakeUid);
-          localStorage.setItem("ugc_bncc_mock_user", JSON.stringify(sessionPayload));
-          onLoginSuccess(fakeUid, loggedUser, loggedMember);
-          onClose();
-          return;
-        }
-        if (!firebaseUser) {
-          throw innerErr;
-        }
+      if (!firebaseUser) {
+        throw new Error("Authentication failed: No valid user returned.");
       }
 
-      const emailLower = firebaseUser.email?.toLowerCase() || "";
-      let role = UserRole.ACTIVE_CADET;
-      if (emailLower === "faisal.ab4303@gmail.com" || emailLower === "admin@ugcbncc.org") {
-        role = UserRole.SUPER_ADMIN;
-      }
+      // 2. Resolve authoritative role via Custom Claims / verified admin list
+      const role = await authService.resolveUserRole(firebaseUser);
 
+      // 3. Look up associated cadet dossier if applicable
+      const emailLower = (firebaseUser.email || "").toLowerCase().trim();
       let loggedMember: Member | null = null;
       try {
         const querySnap = await getDocs(query(collection(db, "cadets"), where("email", "==", emailLower)));
         if (!querySnap.empty) {
           loggedMember = querySnap.docs[0].data() as Member;
-          if (loggedMember.status === MemberStatus.ALUMNI) {
-            role = UserRole.ALUMNI;
-          }
         }
       } catch (e) {
-        console.warn("Could not load cadet details:", e);
+        console.warn("[LoginModal] Could not load cadet record:", e);
       }
 
       const loggedUser: User = {
@@ -146,11 +70,23 @@ export default function LoginModal({ onClose, onLoginSuccess }: LoginModalProps)
         createdAt: firebaseUser.metadata.creationTime || new Date().toISOString()
       };
 
-      localStorage.setItem("ugc_bncc_token", firebaseUser.uid);
       onLoginSuccess(firebaseUser.uid, loggedUser, loggedMember);
       onClose();
     } catch (err: any) {
-      setError(err.message || "Invalid command email or password credential.");
+      console.error("[LoginModal] Authentication failure:", err);
+      let friendlyMessage = "Invalid command email or password credential.";
+      if (err.code === "auth/user-not-found" || err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+        friendlyMessage = "Access denied: Invalid email or password credentials.";
+      } else if (err.code === "auth/too-many-requests") {
+        friendlyMessage = "Security alert: Too many failed login attempts. Please wait before retrying.";
+      } else if (err.code === "auth/user-disabled") {
+        friendlyMessage = "This command account has been deactivated by Platoon administration.";
+      } else if (err.code === "auth/network-request-failed") {
+        friendlyMessage = "Network error: Unable to contact Firebase Authentication service.";
+      } else if (err.message) {
+        friendlyMessage = err.message;
+      }
+      setError(friendlyMessage);
       setLoading(false);
     }
   };
@@ -159,27 +95,30 @@ export default function LoginModal({ onClose, onLoginSuccess }: LoginModalProps)
     setLoading(true);
     setError(null);
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+
     try {
+      // 1. Authenticate through Google OAuth via Firebase
       const userCredential = await signInWithPopup(auth, provider);
       const firebaseUser = userCredential.user;
 
-      const emailLower = firebaseUser.email?.toLowerCase() || "";
-      let role = UserRole.ACTIVE_CADET;
-      if (emailLower === "faisal.ab4303@gmail.com" || emailLower === "admin@ugcbncc.org") {
-        role = UserRole.SUPER_ADMIN;
+      if (!firebaseUser) {
+        throw new Error("Google authentication failed.");
       }
 
+      // 2. Resolve authoritative role
+      const role = await authService.resolveUserRole(firebaseUser);
+
+      // 3. Look up associated cadet dossier if applicable
+      const emailLower = (firebaseUser.email || "").toLowerCase().trim();
       let loggedMember: Member | null = null;
       try {
         const querySnap = await getDocs(query(collection(db, "cadets"), where("email", "==", emailLower)));
         if (!querySnap.empty) {
           loggedMember = querySnap.docs[0].data() as Member;
-          if (loggedMember.status === MemberStatus.ALUMNI) {
-            role = UserRole.ALUMNI;
-          }
         }
       } catch (e) {
-        console.warn("Could not load cadet details:", e);
+        console.warn("[LoginModal] Could not load cadet record:", e);
       }
 
       const loggedUser: User = {
@@ -190,17 +129,16 @@ export default function LoginModal({ onClose, onLoginSuccess }: LoginModalProps)
         createdAt: firebaseUser.metadata.creationTime || new Date().toISOString()
       };
 
-      localStorage.setItem("ugc_bncc_token", firebaseUser.uid);
       onLoginSuccess(firebaseUser.uid, loggedUser, loggedMember);
       onClose();
     } catch (err: any) {
       if (err.code === "auth/popup-blocked" || err.message?.includes("popup-blocked")) {
-        console.warn("Popup blocked by browser/iframe. Attempting redirect sign-in...");
+        console.warn("Popup blocked by browser. Attempting redirect sign-in...");
         try {
           await signInWithRedirect(auth, provider);
           return;
         } catch (redirectErr) {
-          setError("Google Sign-In popup was blocked by your browser/iframe preview settings. Please allow popups or open the app in a new tab using the top-right button, or log in with Email & Password.");
+          setError("Google Sign-In popup was blocked by your browser settings. Please allow popups or log in using Email & Password.");
         }
       } else {
         setError(err.message || "Google authentication failed.");
@@ -217,11 +155,11 @@ export default function LoginModal({ onClose, onLoginSuccess }: LoginModalProps)
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white dark:bg-slate-900 rounded-xl border-4 border-[#124632] dark:border-[#FFB703] overflow-hidden shadow-2xl max-w-sm w-full relative cursor-default"
+        className="bg-white dark:bg-slate-900 rounded-xl border-4 border-[#124632] dark:border-[#FFB703] overflow-hidden shadow-2xl max-w-sm w-full relative cursor-default max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Ribbon */}
-        <div className="bg-[#124632] text-white p-5 flex justify-between items-center border-b-2 border-[#FFB703]">
+        <div className="bg-[#124632] text-white p-5 flex justify-between items-center border-b-2 border-[#FFB703] shrink-0">
           <div className="flex items-center space-x-2.5">
             <Shield className="h-5 w-5 text-[#FFB703]" />
             <h3 className="font-display font-extrabold text-sm tracking-wider uppercase">
@@ -234,7 +172,7 @@ export default function LoginModal({ onClose, onLoginSuccess }: LoginModalProps)
         </div>
 
         {/* Login Body Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs overflow-y-auto">
           {error && (
             <div className="bg-red-50 dark:bg-red-950/40 border-l-4 border-red-500 text-red-900 dark:text-red-200 p-2.5 rounded font-mono text-[10.5px]">
               {error}

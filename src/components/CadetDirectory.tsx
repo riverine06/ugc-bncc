@@ -8,6 +8,8 @@ import { motion } from "motion/react";
 import { Search, UserCheck, Briefcase, MapPin, Award, Compass, RefreshCw, Star, ShieldCheck } from "lucide-react";
 import { Member, BNCCRank, MemberStatus } from "../types";
 import { subscribeToCollection } from "../firebaseService";
+import { useDebounce } from "../utils/useDebounce";
+import SEO from "./SEO";
 
 interface CadetDirectoryProps {
   members: Member[];
@@ -28,94 +30,82 @@ export default function CadetDirectory({
   const [filterBatch, setFilterBatch] = React.useState<string>("");
   const [filterRank, setFilterRank] = React.useState<string>("");
   const [filterGroup, setFilterGroup] = React.useState<string>("");
+  const [currentPage, setCurrentPage] = React.useState<number>(1);
+  const PAGE_SIZE = 18;
+
+  const debouncedSearch = useDebounce(searchQuery, 200);
 
   const [campParticipants, setCampParticipants] = React.useState<any[]>([]);
   const [achievements, setAchievements] = React.useState<any[]>([]);
-  const [applications, setApplications] = React.useState<any[]>([]);
 
   React.useEffect(() => {
     const unsubCP = subscribeToCollection<any>("campParticipants", (data) => setCampParticipants(data));
     const unsubAch = subscribeToCollection<any>("achievements", (data) => setAchievements(data));
-    const unsubApp = subscribeToCollection<any>("applications", (data) => setApplications(data));
     return () => {
       unsubCP();
       unsubAch();
-      unsubApp();
     };
   }, []);
 
-  const getCadetStats = (member: Member) => {
-    const memberId = member.id;
-    const memberEmail = (member.email || "").toLowerCase().trim();
-    const memberPhone = (member.phone || "").replace(/\D/g, "");
+  // Reset page when tab or filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, filterBatch, filterRank, filterGroup, debouncedSearch]);
 
-    // 1. Camps count (deduplicated)
-    const seenCampKeys = new Set<string>();
+  // High-performance O(N) pre-indexed lookup map for camps and awards
+  const statsByMemberId = React.useMemo(() => {
+    const map = new Map<string, { campsCount: number; awardsCount: number }>();
 
-    campParticipants
-      .filter((cp) => cp.memberId === memberId)
-      .forEach((cp) => {
-        const campName = cp.campName || "Camp";
-        const key = `${cp.campId || ""}_${campName.toLowerCase().trim()}`;
-        seenCampKeys.add(key);
-      });
-
-    const matchingApp = applications.find((app) => {
-      const appEmail = (app.email || "").toLowerCase().trim();
-      const appPhone = (app.phone || "").replace(/\D/g, "");
-      const appCadetId = app.cadetId || "";
-      return (
-        (memberEmail && appEmail && memberEmail === appEmail) ||
-        (memberPhone && appPhone && memberPhone === appPhone) ||
-        (memberId && appCadetId && memberId === appCadetId)
-      );
-    });
-
-    if (matchingApp && Array.isArray(matchingApp.campsParticipation)) {
-      matchingApp.campsParticipation.forEach((appCamp: any) => {
-        const campName = appCamp.campName || "Camp";
-        const key = `${appCamp.campId || ""}_${campName.toLowerCase().trim()}`;
-        seenCampKeys.add(key);
-      });
+    // Pre-index camp participants by memberId
+    const campsByMember = new Map<string, Set<string>>();
+    for (let i = 0; i < campParticipants.length; i++) {
+      const cp = campParticipants[i];
+      if (!cp.memberId) continue;
+      let set = campsByMember.get(cp.memberId);
+      if (!set) {
+        set = new Set<string>();
+        campsByMember.set(cp.memberId, set);
+      }
+      const campName = cp.campName || "Camp";
+      set.add(`${cp.campId || ""}_${campName.toLowerCase().trim()}`);
     }
 
-    // 2. Awards count (deduplicated)
-    const seenAwardTitles = new Set<string>();
-
-    achievements
-      .filter((a) => a.memberId === memberId || a.recipientId === memberId || a.cadetId === memberId)
-      .forEach((a) => {
-        const title = (a.title || "").toLowerCase().trim();
-        if (title) seenAwardTitles.add(title);
-      });
-
-    campParticipants
-      .filter((cp) => cp.memberId === memberId && cp.awards && cp.awards.trim() !== "")
-      .forEach((cp) => {
-        const title = cp.awards.trim().toLowerCase();
-        if (title) seenAwardTitles.add(title);
-      });
-
-    if (matchingApp) {
-      if (matchingApp.pastAchievements && matchingApp.pastAchievements.trim()) {
-        const title = matchingApp.pastAchievements.trim().toLowerCase();
-        if (title) seenAwardTitles.add(title);
+    // Pre-index achievements by memberId
+    const awardsByMember = new Map<string, Set<string>>();
+    for (let i = 0; i < achievements.length; i++) {
+      const a = achievements[i];
+      const id = a.memberId || a.recipientId || a.cadetId;
+      if (!id) continue;
+      let set = awardsByMember.get(id);
+      if (!set) {
+        set = new Set<string>();
+        awardsByMember.set(id, set);
       }
-      if (Array.isArray(matchingApp.campsParticipation)) {
-        matchingApp.campsParticipation.forEach((appCamp: any) => {
-          if (appCamp.achievements && appCamp.achievements.trim()) {
-            const title = appCamp.achievements.trim().toLowerCase();
-            if (title) seenAwardTitles.add(title);
-          }
-        });
-      }
+      const title = (a.title || "").toLowerCase().trim();
+      if (title) set.add(title);
     }
 
-    return {
-      campsCount: seenCampKeys.size,
-      awardsCount: seenAwardTitles.size,
-    };
-  };
+    // Also include camp awards
+    for (let i = 0; i < campParticipants.length; i++) {
+      const cp = campParticipants[i];
+      if (!cp.memberId || !cp.awards || !cp.awards.trim()) continue;
+      let set = awardsByMember.get(cp.memberId);
+      if (!set) {
+        set = new Set<string>();
+        awardsByMember.set(cp.memberId, set);
+      }
+      set.add(cp.awards.trim().toLowerCase());
+    }
+
+    for (let i = 0; i < members.length; i++) {
+      const m = members[i];
+      const campsCount = campsByMember.get(m.id)?.size || 0;
+      const awardsCount = awardsByMember.get(m.id)?.size || 0;
+      map.set(m.id, { campsCount, awardsCount });
+    }
+
+    return map;
+  }, [campParticipants, achievements, members]);
 
   // Derive filter option sets excluding officers and PUO ranks/designations
   const cadetMembersOnly = members.filter(
@@ -188,8 +178,8 @@ export default function CadetDirectory({
     if (filterGroup && member.department !== filterGroup) return false;
 
     // 3. Main search query
-    if (searchQuery) {
-      const term = searchQuery.toLowerCase();
+    if (debouncedSearch) {
+      const term = debouncedSearch.toLowerCase();
       const matchesSearch =
         member.fullName.toLowerCase().includes(term) ||
         member.id.toLowerCase().includes(term) ||
@@ -218,24 +208,32 @@ export default function CadetDirectory({
   };
 
   // Sort cadets: 1. Batch (Newest batch first), 2. Rank within each batch
-  const sortedFiltered = [...filtered].sort((a, b) => {
-    // 1. Batch (Newest batch first e.g., 2026 > 2025 > 2024 ... > 2018)
-    const batchA = a.joiningYear || (a.session ? parseInt(a.session, 10) || 0 : 0);
-    const batchB = b.joiningYear || (b.session ? parseInt(b.session, 10) || 0 : 0);
-    if (batchB !== batchA) {
-      return batchB - batchA;
-    }
+  const sortedFiltered = React.useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      // 1. Batch (Newest batch first e.g., 2026 > 2025 > 2024 ... > 2018)
+      const batchA = a.joiningYear || (a.session ? parseInt(a.session, 10) || 0 : 0);
+      const batchB = b.joiningYear || (b.session ? parseInt(b.session, 10) || 0 : 0);
+      if (batchB !== batchA) {
+        return batchB - batchA;
+      }
 
-    // 2. Rank hierarchy within each batch (Highest rank first)
-    const rankA = getRankWeight(a.rank);
-    const rankB = getRankWeight(b.rank);
-    if (rankA !== rankB) {
-      return rankA - rankB;
-    }
+      // 2. Rank hierarchy within each batch (Highest rank first)
+      const rankA = getRankWeight(a.rank);
+      const rankB = getRankWeight(b.rank);
+      if (rankA !== rankB) {
+        return rankA - rankB;
+      }
 
-    // 3. Fallback name alphabetical
-    return a.fullName.localeCompare(b.fullName);
-  });
+      // 3. Fallback name alphabetical
+      return a.fullName.localeCompare(b.fullName);
+    });
+  }, [filtered]);
+
+  const totalPages = Math.ceil(sortedFiltered.length / PAGE_SIZE) || 1;
+  const paginatedMembers = React.useMemo(() => {
+    const startIndex = (currentPage - 1) * PAGE_SIZE;
+    return sortedFiltered.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [sortedFiltered, currentPage, PAGE_SIZE]);
 
   const resetFilters = () => {
     setFilterBatch("");
@@ -246,12 +244,22 @@ export default function CadetDirectory({
 
   return (
     <div className="w-full mx-auto py-10 space-y-8">
+      <SEO
+        title="Cadet Ledger & Roster Directory | UGC BNCC"
+        description="Search, filter, and inspect verified military service records and alumni networking histories of Uttara Government College BNCC Platoon."
+        canonicalPath="/directory"
+        breadcrumbs={[
+          { name: "Home", url: "/" },
+          { name: "Cadet Directory", url: "/directory" }
+        ]}
+      />
+
       {/* 1. Directory Header with Toggle Tabs */}
       <div className="flex flex-col md:flex-row md:justify-between md:items-center border-b border-slate-200 dark:border-slate-800 pb-5 gap-4">
         <div>
-          <h2 className="text-2xl font-display font-extrabold text-army-950 dark:text-amber-400 uppercase tracking-tight">
+          <h1 className="text-2xl font-display font-extrabold text-army-950 dark:text-amber-400 uppercase tracking-tight">
             CADET LEDGER DIRECTORY
-          </h2>
+          </h1>
           <p className="text-slate-500 dark:text-slate-400 text-xs mt-1">
             Search, filter, and review military service records and alumni networking histories.
           </p>
@@ -392,133 +400,171 @@ export default function CadetDirectory({
           </button>
         </div>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {sortedFiltered.map((member) => (
-            <motion.div
-              layout
-              key={member.id}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 dark:hover:border-amber-500/40 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
-            >
-              {/* Card top banner/color strip */}
-              <div className="h-2.5 bg-army-900 dark:bg-[#124632]"></div>
+        <div className="space-y-6">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {paginatedMembers.map((member) => (
+              <motion.div
+                layout
+                key={member.id}
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 dark:hover:border-amber-500/40 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+              >
+                {/* Card top banner/color strip */}
+                <div className="h-2.5 bg-army-900 dark:bg-[#124632]"></div>
 
-              {/* Card Content */}
-              <div className="p-5 flex flex-col justify-between flex-grow">
-                <div>
-                  <div className="flex items-start space-x-4 mb-4">
-                    <img
-                      src={member.photoUrl}
-                      alt={member.fullName}
-                      className="w-16 h-16 rounded-full border-2 border-army-600 object-cover shadow-sm flex-shrink-0"
-                      loading="lazy"
-                      decoding="async"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div>
-                      <div className="flex items-center space-x-1 flex-wrap gap-1">
-                        <span className="text-[9px] bg-amber-100 text-amber-950 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/70 dark:border-amber-500/40 font-bold px-1.5 py-0.5 rounded font-mono uppercase">
-                          {member.rank}
-                        </span>
-                        {member.verified && (
-                          <span className="text-[8px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 font-bold px-1 py-0.5 rounded font-mono">
-                            VERIFIED
+                {/* Card Content */}
+                <div className="p-5 flex flex-col justify-between flex-grow">
+                  <div>
+                    <div className="flex items-start space-x-4 mb-4">
+                      <img
+                        src={member.photoUrl}
+                        alt={`Cadet ${member.rank} ${member.fullName} Official Uniform Portrait`}
+                        className="w-16 h-16 rounded-full border-2 border-army-600 object-cover shadow-sm flex-shrink-0"
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center space-x-1 flex-wrap gap-1">
+                          <span className="text-[9px] bg-amber-100 text-amber-950 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/70 dark:border-amber-500/40 font-bold px-1.5 py-0.5 rounded font-mono uppercase">
+                            {member.rank}
                           </span>
+                          {member.verified && (
+                            <span className="text-[8px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 font-bold px-1 py-0.5 rounded font-mono">
+                              VERIFIED
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="font-display font-bold text-slate-900 dark:text-white mt-1 hover:text-army-700 dark:hover:text-amber-400 cursor-pointer text-sm" onClick={() => onSelectMember(member.id)}>
+                          {member.fullName}
+                        </h3>
+                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">ID: {member.id}</p>
+                      </div>
+                    </div>
+
+                    {/* Core academic / platoon details */}
+                    <div className="bg-slate-50 dark:bg-slate-950/60 p-3 rounded space-y-1 text-[11px] text-slate-600 dark:text-slate-400 font-mono border border-slate-100 dark:border-slate-800">
+                      <div className="flex justify-between gap-2">
+                        <span>
+                          {member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER
+                            ? "DESIGNATION / GROUP:"
+                            : "HSC GROUP:"}
+                        </span>
+                        <strong className="text-slate-900 dark:text-slate-200 truncate max-w-[140px]" title={member.department}>{member.department}</strong>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span>
+                          {member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER
+                            ? "SERVICE SESSION:"
+                            : "SESSION:"}
+                        </span>
+                        <strong className="text-slate-900 dark:text-slate-200">{member.session}</strong>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <span>
+                          {member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER
+                            ? "APPOINTED YEAR:"
+                            : "JOIN YEAR:"}
+                        </span>
+                        <strong className="text-slate-900 dark:text-slate-200">{member.joiningYear}</strong>
+                      </div>
+                      {member.status === MemberStatus.ALUMNI && member.graduationYear && (
+                        <div className="flex justify-between gap-2 text-amber-700 dark:text-amber-500">
+                          <span>GRAD YEAR:</span>
+                          <strong>{member.graduationYear}</strong>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Show current profession if alumni */}
+                    {member.status === MemberStatus.ALUMNI && member.currentProfession && (
+                      <div className="mt-3.5 space-y-1 border-t border-slate-100 dark:border-slate-800 pt-3">
+                        <div className="flex items-center space-x-1.5 text-xs text-slate-800 dark:text-slate-200">
+                          <Briefcase className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                          <span className="font-sans font-medium line-clamp-1">{member.currentProfession}</span>
+                        </div>
+                        {member.currentOrganization && (
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 ml-5 truncate max-w-[200px]">
+                            {member.currentOrganization}
+                          </p>
+                        )}
+                        {member.currentCity && (
+                          <div className="flex items-center space-x-1 text-[10px] text-slate-400 ml-5">
+                            <MapPin className="h-3 w-3 text-slate-300" />
+                            <span>{member.currentCity}</span>
+                          </div>
                         )}
                       </div>
-                      <h3 className="font-display font-bold text-slate-900 dark:text-white mt-1 hover:text-army-700 dark:hover:text-amber-400 cursor-pointer text-sm" onClick={() => onSelectMember(member.id)}>
-                        {member.fullName}
-                      </h3>
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">ID: {member.id}</p>
-                    </div>
-                  </div>
+                    )}
 
-                  {/* Core academic / platoon details */}
-                  <div className="bg-slate-50 dark:bg-slate-950/60 p-3 rounded space-y-1 text-[11px] text-slate-600 dark:text-slate-400 font-mono border border-slate-100 dark:border-slate-800">
-                    <div className="flex justify-between gap-2">
-                      <span>
-                        {member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER
-                          ? "DESIGNATION / GROUP:"
-                          : "HSC GROUP:"}
-                      </span>
-                      <strong className="text-slate-900 dark:text-slate-200 truncate max-w-[140px]" title={member.department}>{member.department}</strong>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                      <span>
-                        {member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER
-                          ? "SERVICE SESSION:"
-                          : "SESSION:"}
-                      </span>
-                      <strong className="text-slate-900 dark:text-slate-200">{member.session}</strong>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                      <span>
-                        {member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER
-                          ? "APPOINTED YEAR:"
-                          : "JOIN YEAR:"}
-                      </span>
-                      <strong className="text-slate-900 dark:text-slate-200">{member.joiningYear}</strong>
-                    </div>
-                    {member.status === MemberStatus.ALUMNI && member.graduationYear && (
-                      <div className="flex justify-between gap-2 text-amber-700 dark:text-amber-500">
-                        <span>GRAD YEAR:</span>
-                        <strong>{member.graduationYear}</strong>
+                    {/* Show quick stats (active cadets & alumni) */}
+                    {(member.status === MemberStatus.ACTIVE_CADET || member.status === MemberStatus.ALUMNI) && (
+                      <div className="mt-3.5 flex items-center space-x-3 text-[10px] text-slate-400 font-mono border-t border-slate-100 dark:border-slate-800 pt-3">
+                        {(() => {
+                          const stats = statsByMemberId.get(member.id) || { campsCount: 0, awardsCount: 0 };
+                          return (
+                            <>
+                              <div className="flex items-center space-x-1">
+                                <Compass className="h-3.5 w-3.5 text-slate-300" />
+                                <span>Camps: {stats.campsCount}</span>
+                              </div>
+                              <div className="flex items-center space-x-1">
+                                <Award className="h-3.5 w-3.5 text-slate-300" />
+                                <span>Awards: {stats.awardsCount}</span>
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
 
-                  {/* Show current profession if alumni */}
-                  {member.status === MemberStatus.ALUMNI && member.currentProfession && (
-                    <div className="mt-3.5 space-y-1 border-t border-slate-100 dark:border-slate-800 pt-3">
-                      <div className="flex items-center space-x-1.5 text-xs text-slate-800 dark:text-slate-200">
-                        <Briefcase className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
-                        <span className="font-sans font-medium line-clamp-1">{member.currentProfession}</span>
-                      </div>
-                      {member.currentOrganization && (
-                        <p className="text-[10px] text-slate-400 dark:text-slate-500 ml-5 truncate max-w-[200px]">
-                          {member.currentOrganization}
-                        </p>
-                      )}
-                      {member.currentCity && (
-                        <div className="flex items-center space-x-1 text-[10px] text-slate-400 ml-5">
-                          <MapPin className="h-3 w-3 text-slate-300" />
-                          <span>{member.currentCity}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Show quick stats (active cadets & alumni) */}
-                  {(member.status === MemberStatus.ACTIVE_CADET || member.status === MemberStatus.ALUMNI) && (
-                    <div className="mt-3.5 flex items-center space-x-3 text-[10px] text-slate-400 font-mono border-t border-slate-100 dark:border-slate-800 pt-3">
-                      {(() => {
-                        const stats = getCadetStats(member);
-                        return (
-                          <>
-                            <div className="flex items-center space-x-1">
-                              <Compass className="h-3.5 w-3.5 text-slate-300" />
-                              <span>Camps: {stats.campsCount}</span>
-                            </div>
-                            <div className="flex items-center space-x-1">
-                              <Award className="h-3.5 w-3.5 text-slate-300" />
-                              <span>Awards: {stats.awardsCount}</span>
-                            </div>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  )}
+                  {/* Profile CTA */}
+                  <button
+                    onClick={() => onSelectMember(member.id)}
+                    className="mt-5 w-full bg-slate-100 hover:bg-army-900 hover:text-white dark:bg-slate-800 dark:hover:bg-amber-500 dark:hover:text-slate-950 border border-slate-200 hover:border-army-900 dark:border-slate-700 dark:hover:border-amber-500 text-slate-700 dark:text-slate-300 font-display font-bold py-2.5 rounded text-xs transition-colors tracking-wide uppercase shadow-sm cursor-pointer"
+                  >
+                    VIEW CADET PROFILE
+                  </button>
                 </div>
+              </motion.div>
+            ))}
+          </div>
 
-                {/* Profile CTA */}
+          {/* Pagination controls */}
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-6 px-2 gap-4 font-mono text-xs">
+              <div className="text-slate-500 dark:text-slate-400">
+                Showing <span className="font-bold text-slate-800 dark:text-slate-200">{(currentPage - 1) * PAGE_SIZE + 1}</span> to{" "}
+                <span className="font-bold text-slate-800 dark:text-slate-200">{Math.min(currentPage * PAGE_SIZE, sortedFiltered.length)}</span> of{" "}
+                <span className="font-bold text-slate-800 dark:text-slate-200">{sortedFiltered.length}</span> cadets
+              </div>
+              <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => onSelectMember(member.id)}
-                  className="mt-5 w-full bg-slate-100 hover:bg-army-900 hover:text-white dark:bg-slate-800 dark:hover:bg-amber-500 dark:hover:text-slate-950 border border-slate-200 hover:border-army-900 dark:border-slate-700 dark:hover:border-amber-500 text-slate-700 dark:text-slate-300 font-display font-bold py-2.5 rounded text-xs transition-colors tracking-wide uppercase shadow-sm cursor-pointer"
+                  onClick={() => {
+                    setCurrentPage((p) => Math.max(1, p - 1));
+                    window.scrollTo({ top: 300, behavior: "smooth" });
+                  }}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer font-bold transition-colors"
                 >
-                  VIEW CADET PROFILE
+                  Previous
+                </button>
+                <span className="px-2 text-slate-600 dark:text-slate-400 font-bold">
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  onClick={() => {
+                    setCurrentPage((p) => Math.min(totalPages, p + 1));
+                    window.scrollTo({ top: 300, behavior: "smooth" });
+                  }}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer font-bold transition-colors"
+                >
+                  Next
                 </button>
               </div>
-            </motion.div>
-          ))}
+            </div>
+          )}
         </div>
       )}
     </div>

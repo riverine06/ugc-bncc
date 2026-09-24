@@ -38,6 +38,10 @@ export const documentsService = {
 
   seedDefaultDocumentsIfEmpty: async () => {
     try {
+      const { auth } = await import("../firebase");
+      if (!auth.currentUser) {
+        return;
+      }
       const querySnap = await getDocs(collection(db, "documents"));
       if (querySnap.empty) {
         console.log("[DocumentsService] Seeding default documents...");

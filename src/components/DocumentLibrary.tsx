@@ -1,9 +1,10 @@
 import React from "react";
 import { motion } from "motion/react";
 import { FileText, Download, Search, Folder, BookOpen, Clock, ShieldAlert, Check, Loader2, RefreshCw } from "lucide-react";
-import { logFirebaseEvent } from "../firebase";
+import { logFirebaseEvent, auth } from "../firebase";
 import { subscribeToCollection } from "../firebaseService";
 import { documentsService } from "../services/documents";
+import SEO from "./SEO";
 
 interface PlatoonDoc {
   id: string;
@@ -72,41 +73,28 @@ export default function DocumentLibrary() {
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
-    // Seed default documents first if collection is empty
-    const initAndSubscribe = async () => {
-      try {
-        await documentsService.seedDefaultDocumentsIfEmpty();
-      } catch (err) {
-        console.warn("Seeding documents error:", err);
-      }
-
-      // Subscribe to live updates from Firestore
-      const unsubscribe = subscribeToCollection<any>("documents", (items) => {
-        const mapped: PlatoonDoc[] = items.map((item) => ({
-          id: item.id,
-          title: item.title,
-          description: item.description || "",
-          category: item.category || "Manuals",
-          fileSize: item.fileSize || "1.5 MB",
-          publishDate: item.uploadedAt ? item.uploadedAt.split("T")[0] : new Date().toISOString().split("T")[0],
-          version: item.version || "v1.0",
-          downloadCount: item.downloadCount || 0,
-          url: item.fileUrl || ""
-        }));
-        setDocs(mapped.length > 0 ? mapped : DEFAULT_DOCUMENTS);
-        setLoading(false);
-      });
-
-      return unsubscribe;
-    };
-
-    let unsub: (() => void) | undefined;
-    initAndSubscribe().then((unsubFn) => {
-      unsub = unsubFn;
+    setLoading(true);
+    // Subscribe to live updates from Firestore (strictly non-destructive read)
+    const unsubscribe = subscribeToCollection<any>("documents", (items) => {
+      const isAuthUser = !!auth.currentUser;
+      const visibleItems = items.filter((item) => isAuthUser || (!item.isInternal && item.category !== "Internal"));
+      const mapped: PlatoonDoc[] = visibleItems.map((item) => ({
+        id: item.id,
+        title: item.title,
+        description: item.description || "",
+        category: item.category || "Manuals",
+        fileSize: item.fileSize || "1.5 MB",
+        publishDate: item.uploadedAt ? item.uploadedAt.split("T")[0] : new Date().toISOString().split("T")[0],
+        version: item.version || "v1.0",
+        downloadCount: item.downloadCount || 0,
+        url: item.fileUrl || ""
+      }));
+      setDocs(mapped.length > 0 ? mapped : DEFAULT_DOCUMENTS);
+      setLoading(false);
     });
 
     return () => {
-      if (unsub) unsub();
+      unsubscribe();
     };
   }, []);
 
@@ -211,6 +199,16 @@ export default function DocumentLibrary() {
 
   return (
     <div className="space-y-10">
+      <SEO
+        title="Document Cabinet & Training Manuals | UGC BNCC"
+        description="Access and download official cadet training guides, standard operating procedures, parent consent forms, and circular updates from UGC BNCC Platoon."
+        canonicalPath="/documents"
+        breadcrumbs={[
+          { name: "Home", url: "/" },
+          { name: "Documents", url: "/documents" }
+        ]}
+      />
+
       {/* Page Header */}
       <div className="relative overflow-hidden bg-army-950 border-2 border-amber-500 text-white p-8 rounded-xl shadow-2xl">
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px]"></div>
@@ -220,9 +218,9 @@ export default function DocumentLibrary() {
             <Folder className="h-3 w-3 animate-pulse" />
             <span>Digital Document Vault</span>
           </div>
-          <h2 className="text-3xl font-display font-extrabold tracking-tight uppercase">
+          <h1 className="text-2xl sm:text-3xl font-display font-extrabold tracking-tight uppercase">
             REGIMENTAL <span className="text-amber-400">DOCUMENT CABINET</span>
-          </h2>
+          </h1>
           <p className="text-xs text-army-200 font-sans max-w-2xl font-light">
             Access, read, and download official cadet training guides, standard operating procedures, parent clearance forms, and circular updates published by UGC BNCC Platoon Command.
           </p>

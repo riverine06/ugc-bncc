@@ -536,21 +536,21 @@ export default function NoticeBoardCMS({ onRefresh }: NoticeBoardCMSProps) {
           {paginatedList.map((notice) => (
             <div
               key={notice.id}
-              className={`bg-white dark:bg-slate-900 rounded-xl border p-5 shadow-sm space-y-3 flex justify-between items-start gap-4 transition-all hover:shadow-md ${
+              className={`bg-white dark:bg-slate-900 rounded-xl border p-4 sm:p-5 shadow-sm space-y-3 flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4 transition-all hover:shadow-md ${
                 selectedIds.has(notice.id) 
                   ? "border-amber-500 ring-1 ring-amber-500/20 bg-amber-50/10 dark:bg-amber-950/5" 
                   : "border-slate-200 dark:border-slate-800"
               }`}
             >
-              <div className="flex items-start space-x-3 flex-1">
+              <div className="flex items-start space-x-3 flex-1 min-w-0 w-full">
                 <input
                   type="checkbox"
                   checked={selectedIds.has(notice.id)}
                   onChange={(e) => handleSelectRow(notice.id, e.target.checked)}
-                  className="rounded border-slate-300 text-amber-500 focus:ring-amber-500 h-3.5 w-3.5 mt-1 cursor-pointer"
+                  className="rounded border-slate-300 text-amber-500 focus:ring-amber-500 h-3.5 w-3.5 mt-1 cursor-pointer shrink-0"
                 />
 
-                <div className="space-y-2 flex-1">
+                <div className="space-y-2 flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`font-mono text-[9px] px-2 py-0.5 rounded uppercase font-bold border ${
                       notice.category === "Emergency"
@@ -576,17 +576,17 @@ export default function NoticeBoardCMS({ onRefresh }: NoticeBoardCMSProps) {
                     </span>
                   </div>
 
-                  <h4 className="font-display font-bold text-slate-900 dark:text-white text-sm">
+                  <h4 className="font-display font-bold text-slate-900 dark:text-white text-sm break-words">
                     {notice.title}
                   </h4>
 
-                  <p className="text-xs text-slate-600 dark:text-slate-400 font-sans font-light leading-relaxed whitespace-pre-line">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 font-sans font-light leading-relaxed whitespace-pre-line break-words">
                     {notice.content}
                   </p>
                 </div>
               </div>
 
-              <div className="flex flex-col items-end space-y-1 shrink-0 mt-1">
+              <div className="flex sm:flex-col items-center sm:items-end space-x-1 sm:space-x-0 sm:space-y-1 shrink-0 self-end sm:self-start pt-2 sm:pt-0 border-t border-slate-100 dark:border-slate-800 sm:border-t-0 w-full sm:w-auto justify-end">
                 <button
                   onClick={() => handleDuplicate(notice)}
                   className="text-slate-400 hover:text-blue-500 p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"

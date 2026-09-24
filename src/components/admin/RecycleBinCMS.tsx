@@ -341,7 +341,7 @@ export default function RecycleBinCMS({ onRefresh }: RecycleBinCMSProps) {
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 space-y-3 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Search bar */}
-          <div className="relative flex-1 max-w-md">
+          <div className="relative w-full md:max-w-md">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input
               type="text"
@@ -383,7 +383,7 @@ export default function RecycleBinCMS({ onRefresh }: RecycleBinCMSProps) {
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-850 pt-3">
           {/* Sort controls */}
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-slate-400 uppercase text-[10px]">Sort by:</span>
             <button
               onClick={() => {
@@ -446,7 +446,7 @@ export default function RecycleBinCMS({ onRefresh }: RecycleBinCMSProps) {
         </div>
       ) : (
         <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-900 shadow-sm">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full min-w-[600px] text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 font-mono text-[10px] text-slate-500 uppercase">
                 <th className="p-3 w-10 text-center">

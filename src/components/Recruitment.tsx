@@ -31,6 +31,8 @@ import { generateId, createDocument, subscribeToCollection } from "../firebaseSe
 import { db, auth } from "../firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { processAndUploadImage } from "../utils/imageUtils";
+import { validateImageFile } from "../utils/fileValidation";
+import SEO from "./SEO";
 
 export default function Recruitment() {
   const [formType, setFormType] = React.useState<"recruit" | "cadet" | "alumni">("recruit");
@@ -85,19 +87,23 @@ export default function Recruitment() {
   };
 
   const processFile = async (file: File) => {
-    if (file && file.type.startsWith("image/")) {
-      try {
-        setPhotoUploading(true);
-        setError(null);
-        const photoUrl = await processAndUploadImage(file, "applications", 600, 0.75);
-        setFormData((prev) => ({ ...prev, photoUrl }));
-      } catch (err: any) {
-        alert("Failed to process photo: " + (err?.message || err));
-      } finally {
-        setPhotoUploading(false);
-      }
-    } else {
-      alert("Invalid file type. Please upload a JPEG, PNG, or WEBP image.");
+    if (!file) return;
+
+    const validation = validateImageFile(file, 5 * 1024 * 1024);
+    if (!validation.valid) {
+      setError(validation.error || "Please upload a valid image (JPEG, PNG, WEBP) under 5MB.");
+      return;
+    }
+
+    try {
+      setPhotoUploading(true);
+      setError(null);
+      const photoUrl = await processAndUploadImage(file, "applications", 600, 0.75);
+      setFormData((prev) => ({ ...prev, photoUrl }));
+    } catch (err: any) {
+      setError("Failed to process photo: " + (err?.message || err));
+    } finally {
+      setPhotoUploading(false);
     }
   };
 
@@ -283,15 +289,25 @@ export default function Recruitment() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 grid lg:grid-cols-5 gap-8">
+      <SEO
+        title="Recruitment & Cadet Enlistment | UGC BNCC"
+        description="Join Uttara Government College BNCC Platoon. Review eligibility standards, physical parameters, selection pipelines, and submit online cadet enlistment applications."
+        canonicalPath="/recruitment"
+        breadcrumbs={[
+          { name: "Home", url: "/" },
+          { name: "Recruitment", url: "/recruitment" }
+        ]}
+      />
+
       {/* LEFT COLUMN (Lg: col-span-2): Standards & Process Pipelines */}
       <div className="lg:col-span-2 space-y-6 self-start">
         {/* Eligibility Standards */}
         <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
           <div className="flex items-center space-x-2 border-b border-slate-100 dark:border-slate-800 pb-3 text-army-950 dark:text-amber-400">
             <ShieldAlert className="h-5 w-5 text-army-700 dark:text-amber-500" />
-            <h3 className="font-display font-extrabold uppercase text-sm tracking-wide">
+            <h2 className="font-display font-extrabold uppercase text-sm tracking-wide">
               ELIGIBILITY STANDARDS
-            </h3>
+            </h2>
           </div>
           <div className="space-y-4 text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans">
             <div>
@@ -314,9 +330,9 @@ export default function Recruitment() {
 
         {/* Joining Procedure */}
         <div className="bg-army-900 text-white p-6 rounded-xl border border-amber-500/20 space-y-4">
-          <h3 className="font-display font-bold text-sm text-amber-400 uppercase tracking-wide">
+          <h2 className="font-display font-bold text-sm text-amber-400 uppercase tracking-wide">
             JOINING PROCEDURE PIPELINE
-          </h3>
+          </h2>
           <div className="space-y-4 font-mono text-[11px] text-army-100">
             <div className="flex items-start space-x-3">
               <span className="bg-amber-500 text-army-950 rounded-full h-5 w-5 flex items-center justify-center font-bold flex-shrink-0">
@@ -356,15 +372,15 @@ export default function Recruitment() {
         {/* Toggle form type */}
         <div className="flex flex-col space-y-4 border-b border-slate-100 dark:border-slate-800 pb-5">
           <div>
-            <h3 className="font-display font-extrabold text-army-950 dark:text-slate-100 text-base uppercase">
+            <h1 className="font-display font-extrabold text-army-950 dark:text-slate-100 text-lg uppercase">
               PLATOON REGISTRATION DESK
-            </h3>
+            </h1>
             <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
               Submit your registration request. All entries require platoon administrative clearance.
             </p>
           </div>
 
-          <div className="bg-slate-100 dark:bg-slate-950 p-1 rounded font-mono text-xs font-bold border border-slate-200 dark:border-slate-800 flex w-full">
+          <div className="bg-slate-100 dark:bg-slate-950 p-1 rounded font-mono text-[11px] sm:text-xs font-bold border border-slate-200 dark:border-slate-800 flex w-full">
             <button
               type="button"
               onClick={() => {
@@ -373,7 +389,7 @@ export default function Recruitment() {
                 setSuccess(null);
                 setError(null);
               }}
-              className={`flex-1 text-center py-2.5 rounded transition-all cursor-pointer font-bold ${
+              className={`flex-1 text-center py-2 sm:py-2.5 px-1 sm:px-2 rounded transition-all cursor-pointer font-bold whitespace-nowrap ${
                 formType === "recruit"
                   ? "bg-army-900 text-white dark:bg-amber-500 dark:text-slate-950 shadow-sm"
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
@@ -389,7 +405,7 @@ export default function Recruitment() {
                 setSuccess(null);
                 setError(null);
               }}
-              className={`flex-1 text-center py-2.5 rounded transition-all cursor-pointer font-bold ${
+              className={`flex-1 text-center py-2 sm:py-2.5 px-1 sm:px-2 rounded transition-all cursor-pointer font-bold whitespace-nowrap ${
                 formType === "cadet"
                   ? "bg-army-900 text-white dark:bg-amber-500 dark:text-slate-950 shadow-sm"
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
@@ -405,7 +421,7 @@ export default function Recruitment() {
                 setSuccess(null);
                 setError(null);
               }}
-              className={`flex-1 text-center py-2.5 rounded transition-all cursor-pointer font-bold ${
+              className={`flex-1 text-center py-2 sm:py-2.5 px-1 sm:px-2 rounded transition-all cursor-pointer font-bold whitespace-nowrap ${
                 formType === "alumni"
                   ? "bg-army-900 text-white dark:bg-amber-500 dark:text-slate-950 shadow-sm"
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"

@@ -27,11 +27,15 @@ import {
   Edit,
   Globe,
   Settings,
-  User as UserIcon
+  User as UserIcon,
+  AlertTriangle,
 } from "lucide-react";
 import { Announcement, PlatoonEvent, Member, GalleryItem, User, UserRole, LeadershipReference, MemberStatus } from "../types";
 import ImageField from "./ImageField";
 import RichTextEditor from "./RichTextEditor";
+import SEO from "./SEO";
+import { useDebounce } from "../utils/useDebounce";
+import { PLATOON_ORGANIZATION_SCHEMA, WEBSITE_SCHEMA, generateEventSchema } from "../utils/seoSchemas";
 import { getSingleDocument, setSingleDocument, softDeleteRecord, createDocument, generateId, subscribeToCollection } from "../firebaseService";
 
 function parseMarkdown(text: string) {
@@ -359,24 +363,37 @@ const Home = React.memo(function Home({
     }
   };
 
-  const handleDeletePhoto = async (id: string, title: string) => {
-    if (!window.confirm(`Move "${title}" to the trash collection?`)) {
-      return;
-    }
+  const [deletePhotoDialog, setDeletePhotoDialog] = React.useState<{ id: string; title: string } | null>(null);
+  const [deletingPhoto, setDeletingPhoto] = React.useState(false);
 
+  const confirmDeletePhoto = async () => {
+    if (!deletePhotoDialog || deletingPhoto) return;
+    setDeletingPhoto(true);
     try {
-      const itemToDel = gallery.find((g) => g.id === id);
+      const itemToDel = gallery.find((g) => g.id === deletePhotoDialog.id);
       if (itemToDel) {
-        await softDeleteRecord("gallery", id, title, itemToDel, currentUser?.email || "admin@ugcbncc.org", currentUser?.id || "admin");
+        await softDeleteRecord(
+          "gallery",
+          deletePhotoDialog.id,
+          deletePhotoDialog.title,
+          itemToDel,
+          currentUser?.email || "admin@ugcbncc.org",
+          currentUser?.id || "admin"
+        );
         onRefreshData();
       }
+      setDeletePhotoDialog(null);
+      setGalleryError(null);
     } catch (err: any) {
-      alert(err.message);
+      setGalleryError(err.message || "Failed to delete photo.");
+    } finally {
+      setDeletingPhoto(false);
     }
   };
 
   // Operations search & Live Leadership Sync
   const [globalSearch, setGlobalSearch] = React.useState("");
+  const debouncedGlobalSearch = useDebounce(globalSearch, 200);
   const [isSearchOpen, setIsSearchOpen] = React.useState(true);
   const [selectedIndex, setSelectedIndex] = React.useState<number>(-1);
   const searchContainerRef = React.useRef<HTMLDivElement>(null);
@@ -466,9 +483,9 @@ const Home = React.memo(function Home({
     };
   }, []);
 
-  const getGlobalSearchResults = () => {
-    if (!globalSearch.trim()) return null;
-    const term = globalSearch.toLowerCase();
+  const results = React.useMemo(() => {
+    if (!debouncedGlobalSearch.trim()) return null;
+    const term = debouncedGlobalSearch.toLowerCase();
 
     const matchingMembers = allMembers.filter(
       (m) =>
@@ -491,9 +508,7 @@ const Home = React.memo(function Home({
       alumni,
       total: matchingMembers.length,
     };
-  };
-
-  const results = getGlobalSearchResults();
+  }, [debouncedGlobalSearch, allMembers]);
 
   const flatResults = React.useMemo(() => {
     if (!results) return [];
@@ -572,6 +587,18 @@ const Home = React.memo(function Home({
 
   return (
     <div className="space-y-16 pb-16" id="home-module">
+      <SEO
+        title="UGC BNCC Digital Platoon | Uttara Government College"
+        description="Official digital presence, cadet record archive, recruitment portal, and event management platform of the Bangladesh National Cadet Corps (BNCC) Platoon of Uttara Government College, established in 2018."
+        canonicalPath="/"
+        jsonLd={[
+          PLATOON_ORGANIZATION_SCHEMA,
+          WEBSITE_SCHEMA,
+          ...(upcomingEvents && upcomingEvents.length > 0
+            ? upcomingEvents.slice(0, 3).map((ev) => generateEventSchema(ev))
+            : [])
+        ]}
+      />
       
       {/* Homepage CMS Admin Control Panel */}
       {isAdmin && (
@@ -888,7 +915,7 @@ const Home = React.memo(function Home({
           </motion.div>
 
           <div className="space-y-3">
-            <motion.h2
+            <motion.h1
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1, duration: 0.6 }}
@@ -904,7 +931,7 @@ const Home = React.memo(function Home({
                   <span key={i} className="block text-white">{line}</span>
                 ))
               )}
-            </motion.h2>
+            </motion.h1>
 
             <motion.div
               initial={{ opacity: 0 }}
@@ -947,13 +974,13 @@ const Home = React.memo(function Home({
           >
             <button
               onClick={() => onChangeTab("recruitment")}
-              className="bg-amber-500 hover:bg-amber-600 text-army-950 px-8 py-3.5 rounded-lg font-display font-bold text-sm shadow-lg hover:shadow-xl transition-all uppercase tracking-wider border-2 border-white/10 cursor-pointer"
+              className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-army-950 px-8 py-3.5 rounded-lg font-display font-bold text-sm shadow-lg hover:shadow-xl transition-all uppercase tracking-wider border-2 border-white/10 cursor-pointer text-center"
             >
               {buttonText1}
             </button>
             <button
               onClick={() => onChangeTab("directory")}
-              className="bg-army-900/80 hover:bg-army-800 border-2 border-army-600 hover:border-amber-500/50 text-amber-400 px-8 py-3.5 rounded-lg font-display font-bold text-sm transition-all uppercase tracking-wider cursor-pointer"
+              className="w-full sm:w-auto bg-army-900/80 hover:bg-army-800 border-2 border-army-600 hover:border-amber-500/50 text-amber-400 px-8 py-3.5 rounded-lg font-display font-bold text-sm transition-all uppercase tracking-wider cursor-pointer text-center"
             >
               {buttonText2}
             </button>
@@ -1256,9 +1283,9 @@ const Home = React.memo(function Home({
                   Official Command Message
                 </span>
               </div>
-              <h3 className="text-2xl md:text-3xl font-display font-extrabold text-white uppercase tracking-tight">
+              <h2 className="text-2xl md:text-3xl font-display font-extrabold text-white uppercase tracking-tight">
                 Moulding Disciplined Leaders of Tomorrow
-              </h3>
+              </h2>
               
               <div className="relative bg-army-950/60 p-6 rounded-xl border border-army-800/80">
                 <Quote className="absolute -top-4 -left-3 h-10 w-10 text-amber-500/20" />
@@ -1284,9 +1311,9 @@ const Home = React.memo(function Home({
       <section className="w-full mx-auto space-y-8">
         <div className="text-center max-w-2xl mx-auto">
           <Award className="h-8 w-8 text-army-800 dark:text-amber-500 mx-auto mb-2" />
-          <h3 className="text-2xl md:text-3xl font-display font-extrabold text-army-950 dark:text-white uppercase tracking-tight">
+          <h2 className="text-2xl md:text-3xl font-display font-extrabold text-army-950 dark:text-white uppercase tracking-tight">
             CORE COMMAND MODULES
-          </h3>
+          </h2>
           <p className="text-slate-500 text-xs md:text-sm mt-2">
             The foundation pillars of the Bangladesh National Cadet Corps training standard.
           </p>
@@ -1315,9 +1342,9 @@ const Home = React.memo(function Home({
         <div className="lg:col-span-3 space-y-6">
           <div className="flex items-center space-x-2 border-b border-slate-200 dark:border-slate-800 pb-3">
             <Bell className="h-5 w-5 text-army-800 dark:text-amber-500" />
-            <h3 className="text-lg font-display font-bold text-army-950 dark:text-white uppercase">
+            <h2 className="text-lg font-display font-bold text-army-950 dark:text-white uppercase">
               SECURE COMMAND TRANSMISSIONS
-            </h3>
+            </h2>
           </div>
 
           <div className="space-y-4">
@@ -1361,7 +1388,7 @@ const Home = React.memo(function Home({
         <div className="lg:col-span-2 space-y-6">
           <div className="flex items-center space-x-2 border-b border-slate-200 dark:border-slate-800 pb-3">
             <Calendar className="h-5 w-5 text-army-800 dark:text-amber-500" />
-            <h3 className="text-lg font-display font-bold text-army-950 dark:text-white uppercase">UPCOMING DRILLS & EVENTS</h3>
+            <h2 className="text-lg font-display font-bold text-army-950 dark:text-white uppercase">UPCOMING DRILLS & EVENTS</h2>
           </div>
 
           <div className="space-y-4">
@@ -1406,9 +1433,9 @@ const Home = React.memo(function Home({
       <section className="bg-army-950 text-white py-16 px-4 sm:px-6 lg:px-8 border-y-4 border-amber-500 rounded-2xl shadow-xl w-full mx-auto">
         <div className="w-full mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-10">
-            <h3 className="text-2xl md:text-3xl font-display font-extrabold text-amber-400 uppercase tracking-tight">
+            <h2 className="text-2xl md:text-3xl font-display font-extrabold text-amber-400 uppercase tracking-tight">
               PROUD ALUMNI SPOTLIGHT
-            </h3>
+            </h2>
             <p className="text-army-200 text-xs md:text-sm font-sans mt-2 font-light">
               Since 2018, our cadet graduates have stepped into influential, patriotic careers, serving as live inspirations for current recruits.
             </p>
@@ -1424,7 +1451,7 @@ const Home = React.memo(function Home({
                   <div className="flex items-center space-x-4 mb-4">
                     <img
                       src={alum.photoUrl}
-                      alt={alum.fullName}
+                      alt={`Portrait of Cadet Alumnus ${alum.rank} ${alum.fullName}`}
                       className="w-14 h-14 rounded-full border-2 border-amber-500 object-cover"
                       loading="lazy"
                       decoding="async"
@@ -1479,7 +1506,7 @@ const Home = React.memo(function Home({
       {/* 6. Platoon Historical Gallery */}
       <section className="w-full mx-auto text-center bg-white dark:bg-slate-900 p-6 sm:p-8 lg:p-10 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
         <div>
-          <h3 className="text-2xl font-display font-extrabold text-army-950 dark:text-white uppercase">Platoon Historical Gallery</h3>
+          <h2 className="text-2xl font-display font-extrabold text-army-950 dark:text-white uppercase">Platoon Historical Gallery</h2>
           <p className="text-slate-600 dark:text-slate-400 text-sm max-w-2xl mx-auto mt-2 font-light">
             A visual archive of national programs, weekly drills, blood donation drives, winter camps, and Annual Iftar Mahfils since 2018.
           </p>
@@ -1626,9 +1653,11 @@ const Home = React.memo(function Home({
                 {/* Admin delete overlay (soft delete) */}
                 {isAdmin && (
                   <button
-                    onClick={() => handleDeletePhoto(item.id, item.title)}
-                    className="absolute top-2 right-2 p-1.5 bg-red-600/90 text-white rounded hover:bg-red-700 transition-all shadow-md z-20 cursor-pointer"
+                    type="button"
+                    onClick={() => setDeletePhotoDialog({ id: item.id, title: item.title })}
+                    className="absolute top-2 right-2 p-1.5 bg-red-600/90 text-white rounded hover:bg-red-700 transition-all shadow-md z-20 cursor-pointer min-h-[32px] min-w-[32px] flex items-center justify-center"
                     title="Soft delete photo to trash"
+                    aria-label={`Move ${item.title} to trash`}
                   >
                     <Trash className="h-3.5 w-3.5" />
                   </button>
@@ -1637,6 +1666,50 @@ const Home = React.memo(function Home({
             ))
           )}
         </div>
+
+        {/* Delete Photo Confirmation Modal */}
+        {deletePhotoDialog && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs"
+          >
+            <div className="bg-slate-900 border border-rose-500/40 rounded-xl p-5 max-w-sm w-full space-y-3 shadow-2xl">
+              <div className="flex items-center space-x-2.5 text-rose-400">
+                <AlertTriangle className="h-5 w-5 shrink-0" />
+                <h4 className="text-xs font-mono font-bold uppercase tracking-wider">Move Photo to Trash</h4>
+              </div>
+              <p className="text-xs text-slate-300 font-sans leading-relaxed">
+                Move &ldquo;{deletePhotoDialog.title}&rdquo; to the institutional trash collection? It can be restored from the Recycle Bin.
+              </p>
+              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  disabled={deletingPhoto}
+                  onClick={() => setDeletePhotoDialog(null)}
+                  className="px-3 py-1.5 rounded text-xs font-mono text-slate-300 hover:bg-slate-800 border border-slate-700 min-h-[36px] disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={deletingPhoto}
+                  onClick={confirmDeletePhoto}
+                  className="px-3.5 py-1.5 rounded text-xs font-mono font-bold bg-rose-600 hover:bg-rose-700 text-white min-h-[36px] flex items-center space-x-1.5 disabled:opacity-50"
+                >
+                  {deletingPhoto ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <span>Moving...</span>
+                    </>
+                  ) : (
+                    <span>Confirm Move</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap justify-center gap-3 mt-6">
           <button

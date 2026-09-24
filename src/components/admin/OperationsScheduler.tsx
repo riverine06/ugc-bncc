@@ -1,7 +1,9 @@
 import React from "react";
-import { Plus, Edit, Trash2, Calendar, ClipboardList, CheckCircle, Clock } from "lucide-react";
+import { Plus, Edit, Trash2, Calendar, ClipboardList, CheckCircle, Clock, Loader2 } from "lucide-react";
 import { Member, PlatoonEvent, EventType, AttendanceStatus } from "../../types";
 import { subscribeToCollection, createDocument } from "../../firebaseService";
+import { useAdminFeedback } from "./AdminUIFeedback";
+import { InstitutionalEmptyState } from "./AdminStateFeedback";
 
 interface OperationsSchedulerProps {
   events: PlatoonEvent[];
@@ -28,6 +30,7 @@ export default function OperationsScheduler({
   setEditingId,
   onSubmit,
 }: OperationsSchedulerProps) {
+  const { showToast, isBusy } = useAdminFeedback();
   const [activeAttendanceEvent, setActiveAttendanceEvent] = React.useState<PlatoonEvent | null>(null);
   const [attendanceList, setAttendanceList] = React.useState<any[]>([]);
   const [savingAttendance, setSavingAttendance] = React.useState<string | null>(null);
@@ -47,7 +50,7 @@ export default function OperationsScheduler({
   }, [activeAttendanceEvent]);
 
   const handleMarkAttendance = async (memberId: string, status: AttendanceStatus) => {
-    if (!activeAttendanceEvent) return;
+    if (!activeAttendanceEvent || savingAttendance || isBusy) return;
     setSavingAttendance(memberId);
     try {
       const id = `att_${activeAttendanceEvent.id}_${memberId}`;
@@ -58,8 +61,9 @@ export default function OperationsScheduler({
         status,
         markedAt: new Date().toISOString(),
       }, id);
+      showToast(`Roster attendance recorded as ${status}.`, "success", "ROSTER UPDATED");
     } catch (err: any) {
-      alert(err.message);
+      showToast(err.message || "Failed to record attendance.", "error", "ROSTER FAILED");
     } finally {
       setSavingAttendance(null);
     }
@@ -109,10 +113,10 @@ export default function OperationsScheduler({
                     </p>
                   </div>
 
-                  <div className="flex gap-2 pt-4 border-t border-slate-100 dark:border-slate-800/60 mt-3 text-[10px]">
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2 pt-4 border-t border-slate-100 dark:border-slate-800/60 mt-3 text-[10px]">
                     <button
                       onClick={() => onStartEdit(evt)}
-                      className="bg-white dark:bg-slate-800 hover:bg-slate-100 p-1.5 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded flex-1 flex items-center justify-center space-x-1 cursor-pointer font-bold"
+                      className="bg-white dark:bg-slate-800 hover:bg-slate-100 p-1.5 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded flex-1 min-w-[65px] flex items-center justify-center space-x-1 cursor-pointer font-bold"
                     >
                       <Edit className="h-3.5 w-3.5" />
                       <span>EDIT</span>
@@ -120,7 +124,7 @@ export default function OperationsScheduler({
 
                     <button
                       onClick={() => setActiveAttendanceEvent(evt)}
-                      className="bg-amber-500 hover:bg-amber-600 p-1.5 text-slate-950 font-bold rounded flex-1 flex items-center justify-center space-x-1 cursor-pointer font-mono text-[9px] tracking-wide"
+                      className="bg-amber-500 hover:bg-amber-600 p-1.5 text-slate-950 font-bold rounded flex-1 min-w-[75px] flex items-center justify-center space-x-1 cursor-pointer font-mono text-[9px] tracking-wide"
                     >
                       <ClipboardList className="h-3.5 w-3.5" />
                       <span>ROSTER</span>
@@ -128,7 +132,7 @@ export default function OperationsScheduler({
 
                     <button
                       onClick={() => onDeleteEvent(evt.id, evt.name)}
-                      className="text-slate-400 hover:text-red-500 p-1.5 border border-slate-200 dark:border-slate-700 rounded cursor-pointer"
+                      className="text-slate-400 hover:text-red-500 p-1.5 border border-slate-200 dark:border-slate-700 rounded cursor-pointer shrink-0"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -137,8 +141,11 @@ export default function OperationsScheduler({
               ))}
 
               {events.length === 0 && (
-                <div className="col-span-full py-8 text-center text-slate-400 font-mono">
-                  No upcoming operations found. Get started above.
+                <div className="col-span-full">
+                  <InstitutionalEmptyState
+                    title="NO OPERATIONS SCHEDULED"
+                    message="There are currently no military exercises, parades, or training operations in the schedule."
+                  />
                 </div>
               )}
             </div>
@@ -166,13 +173,13 @@ export default function OperationsScheduler({
 
               <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-64 overflow-y-auto pr-1">
                 {members.filter(m => m.status === "Active Cadet").map((m) => (
-                  <div key={m.id} className="py-2.5 flex items-center justify-between gap-4">
-                    <div>
-                      <div className="font-bold text-slate-900 dark:text-slate-100 text-xs">{m.fullName}</div>
+                  <div key={m.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4">
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-900 dark:text-slate-100 text-xs truncate">{m.fullName}</div>
                       <div className="text-[9px] text-slate-400 font-mono">ID: {m.id} | {m.rank}</div>
                     </div>
 
-                    <div className="flex items-center space-x-1.5 text-[9px] font-mono font-bold">
+                    <div className="flex flex-wrap items-center gap-1.5 text-[9px] font-mono font-bold">
                       <button
                         onClick={() => handleMarkAttendance(m.id, AttendanceStatus.PRESENT)}
                         className={`px-2 py-1 rounded cursor-pointer border ${

@@ -7,6 +7,7 @@ import { User } from "../../types";
 import { getSingleDocument, setSingleDocument, generateId } from "../../firebaseService";
 import { updateEmail, updatePassword } from "firebase/auth";
 import { auth } from "../../firebase";
+import DatabaseIntegrityCMS from "./DatabaseIntegrityCMS";
 
 interface CmsSettingsPanelProps {
   onRefresh: () => void;
@@ -26,7 +27,7 @@ interface ConfirmConfig {
 }
 
 export default function CmsSettingsPanel({ onRefresh, currentUser }: CmsSettingsPanelProps) {
-  const [subTab, setSubTab] = React.useState<"homepage" | "about" | "contact" | "security">("homepage");
+  const [subTab, setSubTab] = React.useState<"homepage" | "about" | "contact" | "security" | "integrity">("homepage");
   const [loading, setLoading] = React.useState(false);
   const [fetching, setFetching] = React.useState(false);
 
@@ -319,6 +320,16 @@ export default function CmsSettingsPanel({ onRefresh, currentUser }: CmsSettings
           }`}
         >
           // SECURITY & CREDENTIALS
+        </button>
+        <button
+          onClick={() => setSubTab("integrity")}
+          className={`px-4 py-2 border-b-2 cursor-pointer transition-all ${
+            subTab === "integrity"
+              ? "border-amber-500 text-slate-900 dark:text-amber-500"
+              : "border-transparent text-slate-400 hover:text-slate-600"
+          }`}
+        >
+          // DATABASE INTEGRITY
         </button>
       </div>
 
@@ -670,6 +681,15 @@ export default function CmsSettingsPanel({ onRefresh, currentUser }: CmsSettings
                   </button>
                 </div>
               </form>
+            )}
+
+            {/* DATABASE INTEGRITY SETTINGS */}
+            {subTab === "integrity" && (
+              <DatabaseIntegrityCMS
+                currentUser={currentUser}
+                showToast={showToast}
+                onRefresh={onRefresh}
+              />
             )}
           </>
         )}

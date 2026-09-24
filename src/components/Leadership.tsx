@@ -8,31 +8,9 @@ import { Shield, Award, Users, Star, BookOpen, Crown, Edit, Check, X, Plus, Tras
 import { User, UserRole, Member, LeadershipReference, FormerPUO } from "../types";
 import { subscribeToCollection, createDocument, updateDocument, deleteDocument, generateId } from "../firebaseService";
 import { isMemberActive, getPUOStatus, TO_BE_ANNOUNCED, resolveSectionSlotsWithOverflow, STANDARD_COMMAND_POSITIONS } from "../utils/leadershipUtils";
+import SEO from "./SEO";
 
-const DEFAULT_FORMER_PUOS: FormerPUO[] = [
-  {
-    id: "fpuo-1",
-    name: "PUO Dr. Md. Aminul Islam",
-    photo: "",
-    session: "2018–2022",
-    department: "Department of Bangla",
-    servicePeriod: "2018 – 2022",
-    startYear: 2018,
-    endYear: 2022,
-    status: "Active",
-  },
-  {
-    id: "fpuo-2",
-    name: "PUO Md. Monir Hossain",
-    photo: "",
-    session: "2014–2018",
-    department: "Department of English",
-    servicePeriod: "2014 – 2018",
-    startYear: 2014,
-    endYear: 2018,
-    status: "Former",
-  },
-];
+const DEFAULT_FORMER_PUOS: FormerPUO[] = [];
 
 interface LeadershipProps {
   currentUser: User | null;
@@ -78,60 +56,14 @@ interface LeadershipData {
 }
 
 const DEFAULT_LEADERSHIP: LeadershipData = {
-  primaryRoles: [
-    {
-      id: "primary-1",
-      memberId: "m1",
-      title: "Platoon Commander",
-      name: "PUO Dr. Md. Aminul Islam",
-      rank: "PUO",
-      department: "Department of Bangla",
-      bio: "Founding Platoon Commander leading Uttara Government College BNCC Platoon since 2018 under Ramna Regiment.",
-      photo: "",
-      ribbons: ["Long Service Medal", "Command Service"],
-      roleType: "platoon_commander",
-      displayOrder: 1
-    },
-    {
-      id: "primary-2",
-      memberId: "m2",
-      title: "Cadet Under Officer (CUO)",
-      name: "CUO Sheikh Sadi",
-      rank: "CUO",
-      department: "HSC Science (2024-2025)",
-      bio: "Senior cadet leader managing parade drill operations, tactical camps, and platoon discipline.",
-      photo: "",
-      ribbons: ["Best Cadet 2024", "National Parade"],
-      roleType: "platoon_in_charge",
-      displayOrder: 2
-    }
-  ],
-  secondaryLeaders: [
-    {
-      id: "sec-1",
-      memberId: "m3",
-      rank: "Sergeant",
-      name: "Sgt. Riad Hasan Khan",
-      role: "Platoon Sergeant",
-      photo: "",
-      displayOrder: 1
-    },
-    {
-      id: "sec-2",
-      memberId: "m4",
-      rank: "Corporal",
-      name: "Cpl. Tanvir Ahmed",
-      role: "Section 1 Leader",
-      photo: "",
-      displayOrder: 2
-    }
-  ],
+  primaryRoles: [],
+  secondaryLeaders: [],
   references: []
 };
 
 export default function Leadership({ currentUser }: LeadershipProps) {
-  const [data, setData] = React.useState<LeadershipData | null>(DEFAULT_LEADERSHIP);
-  const [formerPUOs, setFormerPUOs] = React.useState<FormerPUO[]>(DEFAULT_FORMER_PUOS);
+  const [data, setData] = React.useState<LeadershipData | null>(null);
+  const [formerPUOs, setFormerPUOs] = React.useState<FormerPUO[]>([]);
   const [loading, setLoading] = React.useState<boolean>(false);
   const [isEditing, setIsEditing] = React.useState<boolean>(false);
   const [saving, setSaving] = React.useState<boolean>(false);
@@ -295,25 +227,8 @@ export default function Leadership({ currentUser }: LeadershipProps) {
       processData();
     });
 
-    const unsubFormerPUOs = subscribeToCollection<FormerPUO>("former_puos", async (puoList) => {
-      let list = puoList;
-      if (!list || list.length === 0) {
-        const seeded = localStorage.getItem("ugc_former_puos_initialized");
-        if (!seeded) {
-          localStorage.setItem("ugc_former_puos_initialized", "true");
-          // Seed defaults to Firestore so they are real persistent records with valid IDs
-          for (const item of DEFAULT_FORMER_PUOS) {
-            try {
-              await createDocument("former_puos", item, item.id);
-            } catch (err) {
-              console.warn("Seeding initial former PUO:", err);
-            }
-          }
-          list = DEFAULT_FORMER_PUOS;
-        } else {
-          list = [];
-        }
-      }
+    const unsubFormerPUOs = subscribeToCollection<FormerPUO>("former_puos", (puoList) => {
+      const list = puoList || [];
       rawFormerPUOs = list;
       setFormerPUOs(list);
       processData();
@@ -417,15 +332,13 @@ export default function Leadership({ currentUser }: LeadershipProps) {
 
   const handleDeleteFormerPUO = (id: string, name?: string) => {
     setConfirmDialog({
-      title: "Archive Officer Record (Former Status)",
-      message: `Former POUs must remain in the system/archive. Would you like to mark "${name || "this officer"}" as Former to keep their record preserved in the archive?`,
+      title: "Delete PUO Record",
+      message: `Are you sure you want to delete the record for "${name || "this officer"}" from the PUO archive?`,
       onConfirm: async () => {
         setSaving(true);
         try {
-          await updateDocument("former_puos", id, { status: "Former" });
-          setFormerPUOs((prev) =>
-            prev.map((item) => (item.id === id ? { ...item, status: "Former" } : item))
-          );
+          await deleteDocument("former_puos", id);
+          setFormerPUOs((prev) => prev.filter((item) => item.id !== id));
           if (editingFormerPUOId === id) {
             handleCancelEditFormerPUO();
           }
@@ -572,6 +485,16 @@ export default function Leadership({ currentUser }: LeadershipProps) {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-12" id="leadership-module">
+      <SEO
+        title="Command Structure & Leadership Cadre | UGC BNCC"
+        description="Official command hierarchy, cadet appointments, CUO, Sergeant, Section Leaders, and Former PUO roll of honor of Uttara Government College BNCC Platoon."
+        canonicalPath="/leadership"
+        breadcrumbs={[
+          { name: "Home", url: "/" },
+          { name: "Leadership", url: "/leadership" }
+        ]}
+      />
+
       {/* Admin Action Panel */}
       {isAdmin && (
         <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-300/50 p-4 rounded-xl flex items-center justify-between shadow-sm" id="admin-leadership-panel">
@@ -601,9 +524,9 @@ export default function Leadership({ currentUser }: LeadershipProps) {
       {/* Page Header */}
       <div className="text-center max-w-2xl mx-auto">
         <Crown className="h-7 w-7 text-amber-500 mx-auto mb-2 animate-pulse" />
-        <h2 className="text-3xl font-display font-extrabold text-army-950 dark:text-white uppercase tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-display font-extrabold text-army-950 dark:text-white uppercase tracking-tight">
           PLATOON COMMAND STRUCTURE
-        </h2>
+        </h1>
         <p className="text-slate-500 text-xs mt-1">
           Dynamic organogram resolving command assignments directly to cadet profile dossiers.
         </p>
@@ -1429,82 +1352,84 @@ export default function Leadership({ currentUser }: LeadershipProps) {
           </section>
 
           {/* Former PUOs Subsection */}
-          <section className="space-y-8 pt-10 border-t border-slate-200 dark:border-slate-800" id="former-puos-subsection">
-            <div className="text-center max-w-xl mx-auto space-y-1.5">
-              <span className="inline-block text-[9px] font-mono bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold px-3 py-1 rounded-full uppercase tracking-widest border border-amber-500/30">
-                HERITAGE & ROLL OF HONOR
-              </span>
-              <h3 className="text-2xl font-display font-extrabold text-army-950 dark:text-white uppercase tracking-tight flex items-center justify-center space-x-2">
-                <Award className="h-6 w-6 text-amber-500" />
-                <span>FORMER PLATOON UNDER OFFICERS (PUOs)</span>
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-sans font-light">
-                Chronological roll of honor honoring previous Platoon Commanders of the Uttara Government College BNCC Platoon.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-              {sortedFormerPUOs.length === 0 ? (
-                <p className="text-xs text-slate-400 font-mono col-span-3 text-center py-4">
-                  No former PUO records registered.
+          {(sortedFormerPUOs.length > 0 || isAdmin) && (
+            <section className="space-y-8 pt-10 border-t border-slate-200 dark:border-slate-800" id="former-puos-subsection">
+              <div className="text-center max-w-xl mx-auto space-y-1.5">
+                <span className="inline-block text-[9px] font-mono bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold px-3 py-1 rounded-full uppercase tracking-widest border border-amber-500/30">
+                  HERITAGE & ROLL OF HONOR
+                </span>
+                <h2 className="text-2xl font-display font-extrabold text-army-950 dark:text-white uppercase tracking-tight flex items-center justify-center space-x-2">
+                  <Award className="h-6 w-6 text-amber-500" />
+                  <span>FORMER PLATOON UNDER OFFICERS (PUOs)</span>
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-sans font-light">
+                  Chronological roll of honor honoring previous Platoon Commanders of the Uttara Government College BNCC Platoon.
                 </p>
-              ) : (
-                sortedFormerPUOs.map((fpuo) => (
-                  <div
-                    key={fpuo.id}
-                    className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all p-5 flex flex-col justify-between"
-                  >
-                    <div className="flex items-start space-x-4">
-                      {fpuo.photo && !fpuo.photo.includes("unsplash") ? (
-                        <img
-                          src={fpuo.photo}
-                          alt={fpuo.name}
-                          className="w-16 h-16 rounded-full border-2 border-amber-500 object-cover shadow-sm shrink-0"
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <div className="w-16 h-16 rounded-full border-2 border-amber-500 bg-army-900 text-amber-400 font-bold text-lg flex items-center justify-center shadow-sm shrink-0">
-                          {fpuo.name ? fpuo.name.charAt(0) : "P"}
-                        </div>
-                      )}
-                      <div className="space-y-1 min-w-0">
-                        <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded uppercase inline-block border ${
-                          getPUOStatus(fpuo) === "Active"
-                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400 border-emerald-500/30"
-                            : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400 border-amber-500/30"
-                        }`}>
-                          {getPUOStatus(fpuo) === "Active" ? "Active PUO" : "Former PUO"}
-                        </span>
-                        <h4 className="font-display font-bold text-slate-900 dark:text-white text-sm uppercase truncate">
-                          {fpuo.name}
-                        </h4>
-                        <p className="text-xs font-medium text-army-800 dark:text-amber-400">{fpuo.department}</p>
-                      </div>
-                    </div>
+              </div>
 
-                    <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 grid grid-cols-2 gap-2 text-xs font-mono">
-                      <div className="bg-slate-50 dark:bg-slate-950/60 p-2 rounded border border-slate-100 dark:border-slate-800">
-                        <span className="text-[9px] text-slate-400 block uppercase">Session</span>
-                        <strong className="text-slate-800 dark:text-slate-200 text-[11px]">{fpuo.session}</strong>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+                {sortedFormerPUOs.length === 0 ? (
+                  <p className="text-xs text-slate-400 font-mono col-span-3 text-center py-4">
+                    No former PUO records registered yet.
+                  </p>
+                ) : (
+                  sortedFormerPUOs.map((fpuo) => (
+                    <div
+                      key={fpuo.id}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all p-5 flex flex-col justify-between"
+                    >
+                      <div className="flex items-start space-x-4">
+                        {fpuo.photo && !fpuo.photo.includes("unsplash") ? (
+                          <img
+                            src={fpuo.photo}
+                            alt={fpuo.name}
+                            className="w-16 h-16 rounded-full border-2 border-amber-500 object-cover shadow-sm shrink-0"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 rounded-full border-2 border-amber-500 bg-army-900 text-amber-400 font-bold text-lg flex items-center justify-center shadow-sm shrink-0">
+                            {fpuo.name ? fpuo.name.charAt(0) : "P"}
+                          </div>
+                        )}
+                        <div className="space-y-1 min-w-0">
+                          <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded uppercase inline-block border ${
+                            getPUOStatus(fpuo) === "Active"
+                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400 border-emerald-500/30"
+                              : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400 border-amber-500/30"
+                          }`}>
+                            {getPUOStatus(fpuo) === "Active" ? "Active PUO" : "Former PUO"}
+                          </span>
+                          <h4 className="font-display font-bold text-slate-900 dark:text-white text-sm uppercase truncate">
+                            {fpuo.name}
+                          </h4>
+                          <p className="text-xs font-medium text-army-800 dark:text-amber-400">{fpuo.department}</p>
+                        </div>
                       </div>
-                      <div className="bg-slate-50 dark:bg-slate-950/60 p-2 rounded border border-slate-100 dark:border-slate-800">
-                        <span className="text-[9px] text-slate-400 block uppercase">Service Period</span>
-                        <strong className="text-slate-800 dark:text-slate-200 text-[11px]">{fpuo.servicePeriod}</strong>
+
+                      <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 grid grid-cols-2 gap-2 text-xs font-mono">
+                        <div className="bg-slate-50 dark:bg-slate-950/60 p-2 rounded border border-slate-100 dark:border-slate-800">
+                          <span className="text-[9px] text-slate-400 block uppercase">Session</span>
+                          <strong className="text-slate-800 dark:text-slate-200 text-[11px]">{fpuo.session}</strong>
+                        </div>
+                        <div className="bg-slate-50 dark:bg-slate-950/60 p-2 rounded border border-slate-100 dark:border-slate-800">
+                          <span className="text-[9px] text-slate-400 block uppercase">Service Period</span>
+                          <strong className="text-slate-800 dark:text-slate-200 text-[11px]">{fpuo.servicePeriod}</strong>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
+                  ))
+                )}
+              </div>
+            </section>
+          )}
         </div>
       )}
 
       {/* 3. Rank Badges Dictionary */}
       <section className="bg-army-50 dark:bg-slate-900 p-6 rounded-xl border border-army-100 dark:border-slate-800 shadow-inner">
-        <h3 className="text-sm font-mono tracking-widest text-army-800 dark:text-amber-500 uppercase mb-4 text-center">
+        <h2 className="text-sm font-mono tracking-widest text-army-800 dark:text-amber-500 uppercase mb-4 text-center">
           ★ BNCC PLATOON RANK DICTIONARY ★
-        </h3>
+        </h2>
         <div className="grid md:grid-cols-4 gap-6">
           {rankReference.map((ref) => (
             <div key={ref.name} className="bg-white dark:bg-slate-950 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">

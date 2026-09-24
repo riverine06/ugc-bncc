@@ -4,9 +4,10 @@
  */
 
 import React from "react";
-import { Link, Upload, Eye, Image as ImageIcon, Loader2, CheckCircle2 } from "lucide-react";
+import { Link, Upload, Eye, Image as ImageIcon, Loader2, CheckCircle2, AlertCircle, X } from "lucide-react";
 import { deleteFileFromStorage } from "../firebase";
 import { processAndUploadImage } from "../utils/imageUtils";
+import { validateImageFile } from "../utils/fileValidation";
 
 interface ImageFieldProps {
   value: string;
@@ -14,32 +15,33 @@ interface ImageFieldProps {
   label?: string;
   placeholder?: string;
   id: string;
+  folder?: string;
 }
 
-export default function ImageField({ value, onChange, label, placeholder, id }: ImageFieldProps) {
+export default function ImageField({ value, onChange, label, placeholder, id, folder = "images" }: ImageFieldProps) {
   const [mode, setMode] = React.useState<"url" | "upload">(
     value && value.startsWith("data:image/") ? "upload" : "url"
   );
   const [dragActive, setDragActive] = React.useState(false);
   const [uploadProgress, setUploadProgress] = React.useState<number | null>(null);
   const [uploading, setUploading] = React.useState(false);
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setErrorMsg(null);
     onChange(e.target.value);
   };
 
   const processFile = async (file: File) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      alert("Invalid asset type. Please upload an image file (PNG, JPG, WEBP, etc.)");
+    setErrorMsg(null);
+
+    // Strict validation
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      setErrorMsg(validation.error || "Invalid file format or size.");
       return;
-    }
-    
-    // File size warning
-    const warningSize = 5 * 1024 * 1024;
-    if (file.size > warningSize) {
-      alert("Selected image is large. System will automatically downsample and compress this asset.");
     }
 
     setUploading(true);
@@ -53,14 +55,14 @@ export default function ImageField({ value, onChange, label, placeholder, id }: 
         });
       }
 
-      const downloadUrl = await processAndUploadImage(file, "images", 800, 0.75, (progress) => {
+      const downloadUrl = await processAndUploadImage(file, folder, 800, 0.75, (progress) => {
         setUploadProgress(progress);
       });
 
       onChange(downloadUrl);
     } catch (uploadError: any) {
       console.error("Upload failed", uploadError);
-      alert(`Image upload error: ${uploadError?.message || uploadError}`);
+      setErrorMsg(uploadError?.message || "Failed to process and upload image.");
     } finally {
       setUploading(false);
       setUploadProgress(null);
@@ -72,6 +74,8 @@ export default function ImageField({ value, onChange, label, placeholder, id }: 
     if (files && files[0]) {
       processFile(files[0]);
     }
+    // reset input value so re-uploading same file triggers change
+    if (e.target) e.target.value = "";
   };
 
   const handleDrag = (e: React.DragEvent) => {
@@ -213,6 +217,22 @@ export default function ImageField({ value, onChange, label, placeholder, id }: 
           </div>
         )}
       </div>
+
+      {errorMsg && (
+        <div className="flex items-center justify-between p-2 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 text-[11px] font-mono animate-fadeIn">
+          <div className="flex items-center space-x-1.5">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+            <span>{errorMsg}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setErrorMsg(null)}
+            className="text-red-400 hover:text-red-600 dark:hover:text-red-200 ml-2"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

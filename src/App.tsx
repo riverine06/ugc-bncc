@@ -10,23 +10,42 @@ import { ArrowLeft, Phone, Mail, MapPin, Clock } from "lucide-react";
 import { logFirebaseEvent, auth, db } from "./firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { collection, query, where, getDocs, onSnapshot, doc } from "firebase/firestore";
-import { subscribeToCollection, getLiveStats, initializeDatabase, autoSyncApplicationsWithCadets } from "./firebaseService";
+import { subscribeToCollection } from "./firebaseService";
+import { authService, hasAdminPrivileges, hasEditorPrivileges } from "./services/auth";
 import Header from "./components/Header";
-import Home from "./components/Home";
-import LoginModal from "./components/LoginModal";
-import About from "./components/About";
-import Leadership from "./components/Leadership";
-import CadetDirectory from "./components/CadetDirectory";
-import CadetProfile from "./components/CadetProfile";
-import EventPortal from "./components/EventPortal";
-import Recruitment from "./components/Recruitment";
-import Contact from "./components/Contact";
-import Achievements from "./components/Achievements";
-import DocumentLibrary from "./components/DocumentLibrary";
-import Gallery from "./components/Gallery";
 import { Member, PlatoonEvent, PlatoonApplication, User, UserRole, GalleryItem, Announcement, MemberStatus, BNCCRank } from "./types";
 
+const Home = React.lazy(() => import("./components/Home"));
+const About = React.lazy(() => import("./components/About"));
+const Leadership = React.lazy(() => import("./components/Leadership"));
+const CadetDirectory = React.lazy(() => import("./components/CadetDirectory"));
+const CadetProfile = React.lazy(() => import("./components/CadetProfile"));
+const EventPortal = React.lazy(() => import("./components/EventPortal"));
+const Recruitment = React.lazy(() => import("./components/Recruitment"));
+const Contact = React.lazy(() => import("./components/Contact"));
+const Achievements = React.lazy(() => import("./components/Achievements"));
+const DocumentLibrary = React.lazy(() => import("./components/DocumentLibrary"));
+const Gallery = React.lazy(() => import("./components/Gallery"));
+const LoginModal = React.lazy(() => import("./components/LoginModal"));
 const AdminDashboard = React.lazy(() => import("./components/AdminDashboard"));
+
+// Official Platoon & Creator Social Configuration
+const PLATOON_FACEBOOK_URL = "https://www.facebook.com/ugcBNCC";
+const CREATOR_FACEBOOK_URL = "https://www.facebook.com/ab.faisal006";
+// Creator / Developer Portfolio link (remains blank as requested so user can add it later)
+const CREATOR_PORTFOLIO_URL = "";
+
+function FacebookIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fillRule="evenodd"
+        d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
 
 function CommandArchiveSkeleton() {
   return (
@@ -132,10 +151,11 @@ export default function App() {
     });
   }, [location.pathname, currentView]);
 
-  // Authentication State
+  // Authentication State (Driven strictly by Firebase Authentication)
   const [token, setToken] = React.useState<string | null>(null);
   const [currentUser, setCurrentUser] = React.useState<User | null>(null);
   const [currentMember, setCurrentMember] = React.useState<Member | null>(null);
+  const [authLoading, setAuthLoading] = React.useState<boolean>(true);
   const [loginModalOpen, setLoginModalOpen] = React.useState<boolean>(false);
 
   // Database Fetched State
@@ -184,70 +204,69 @@ export default function App() {
     };
   }, [members, events, campsCount, awardsCount, applications]);
 
-  // Initialize DB and configure Firebase Auth state persistence
+  // Initialize DB and configure real Firebase Auth state persistence
   React.useEffect(() => {
-    initializeDatabase();
-    autoSyncApplicationsWithCadets();
+    // Clean up any legacy mock session traces from browser storage
+    try {
+      localStorage.removeItem("ugc_bncc_mock_user");
+      localStorage.removeItem("ugc_bncc_token");
+    } catch (storageErr) {
+      // ignore
+    }
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const email = firebaseUser.email || "";
-        let role = UserRole.ACTIVE_CADET;
+      try {
+        if (firebaseUser) {
+          const email = (firebaseUser.email || "").toLowerCase().trim();
 
-        if (email === "faisal.ab4303@gmail.com" || email === "admin@ugcbncc.org") {
-          role = UserRole.SUPER_ADMIN;
-        }
+          // Authoritative role resolution from Firebase Auth custom claims / verified admin list
+          const role = await authService.resolveUserRole(firebaseUser);
 
-        // Fetch member details
-        let loggedMember: Member | null = null;
-        try {
-          const querySnap = await getDocs(query(collection(db, "cadets"), where("email", "==", email)));
-          if (!querySnap.empty) {
-            loggedMember = querySnap.docs[0].data() as Member;
-            if (loggedMember.status === MemberStatus.ALUMNI) {
-              role = UserRole.ALUMNI;
+          // Fetch member details if linked
+          let loggedMember: Member | null = null;
+          try {
+            const querySnap = await getDocs(query(collection(db, "cadets"), where("email", "==", email)));
+            if (!querySnap.empty) {
+              loggedMember = querySnap.docs[0].data() as Member;
+              if (loggedMember.status === MemberStatus.ALUMNI && role === UserRole.ACTIVE_CADET) {
+                // Keep alumni status if not an admin/editor
+              }
             }
+          } catch (e) {
+            console.warn("[App] Could not load cadet details:", e);
           }
-        } catch (e) {
-          console.warn("Could not load cadet details:", e);
+
+          const loggedUser: User = {
+            id: firebaseUser.uid,
+            email,
+            role,
+            memberId: loggedMember?.id || null,
+            createdAt: firebaseUser.metadata.creationTime || new Date().toISOString()
+          };
+
+          setToken(firebaseUser.uid);
+          setCurrentUser(loggedUser);
+          setCurrentMember(loggedMember);
+        } else {
+          // Strictly unauthenticated
+          setToken(null);
+          setCurrentUser(null);
+          setCurrentMember(null);
         }
-
-        const loggedUser: User = {
-          id: firebaseUser.uid,
-          email,
-          role,
-          memberId: loggedMember?.id || null,
-          createdAt: firebaseUser.metadata.creationTime || new Date().toISOString()
-        };
-
-        setToken(firebaseUser.uid);
-        setCurrentUser(loggedUser);
-        setCurrentMember(loggedMember);
-      } else {
-        // Fallback to local mock session if any exists
-        try {
-          const savedMock = localStorage.getItem("ugc_bncc_mock_user");
-          if (savedMock) {
-            const parsed = JSON.parse(savedMock);
-            setToken(parsed.id);
-            setCurrentUser(parsed.user);
-            setCurrentMember(parsed.member);
-            return;
-          }
-        } catch (e) {
-          console.warn("Could not load local mock session:", e);
-        }
-
+      } catch (err) {
+        console.error("[App] Error in auth observer:", err);
         setToken(null);
         setCurrentUser(null);
         setCurrentMember(null);
+      } finally {
+        setAuthLoading(false);
       }
     });
 
     return () => unsubscribeAuth();
   }, []);
 
-  // Set up all Firestore Real-Time subscriptions
+  // 1. Core Public Firestore Real-Time subscriptions (mounted once, shared across routes)
   React.useEffect(() => {
     // 1. Cadets
     const unsubMembers = subscribeToCollection<Member>("cadets", (data) => {
@@ -269,22 +288,17 @@ export default function App() {
       setNotices(data);
     });
 
-    // 5. Applications
-    const unsubApplications = subscribeToCollection<PlatoonApplication>("applications", (data) => {
-      setApplications(data);
-    });
-
-    // 5b. Camps count subscription
+    // 5. Camps count subscription
     const unsubCamps = subscribeToCollection<any>("camps", (data) => {
       setCampsCount(data.length);
     });
 
-    // 5c. Achievements count subscription
+    // 6. Achievements count subscription
     const unsubAchievements = subscribeToCollection<any>("achievements", (data) => {
       setAwardsCount(data.length);
     });
 
-    // 6. Contact & Settings Sync
+    // 7. Contact & Settings Sync
     const unsubContact = onSnapshot(doc(db, "settings", "contact"), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -304,12 +318,23 @@ export default function App() {
       unsubEvents();
       unsubGallery();
       unsubNotices();
-      unsubApplications();
       unsubCamps();
       unsubAchievements();
       unsubContact();
     };
-  }, [currentUser?.role, currentUser?.id, auth.currentUser?.uid]);
+  }, []);
+
+  // 2. Role-restricted Applications subscription (isolated to prevent rebuilding all listeners on auth events)
+  React.useEffect(() => {
+    if (currentUser && hasEditorPrivileges(currentUser.role)) {
+      const unsub = subscribeToCollection<PlatoonApplication>("applications", (data) => {
+        setApplications(data);
+      });
+      return () => unsub();
+    } else {
+      setApplications([]);
+    }
+  }, [currentUser?.role]);
 
   // Navigation handlers for router
   const handleSelectMember = React.useCallback((memberId: string) => {
@@ -387,8 +412,12 @@ export default function App() {
     } catch (e) {
       console.error("SignOut failed: ", e);
     }
-    localStorage.removeItem("ugc_bncc_token");
-    localStorage.removeItem("ugc_bncc_mock_user");
+    try {
+      localStorage.removeItem("ugc_bncc_token");
+      localStorage.removeItem("ugc_bncc_mock_user");
+    } catch (e) {
+      // ignore
+    }
     setToken(null);
     setCurrentUser(null);
     setCurrentMember(null);
@@ -425,8 +454,8 @@ export default function App() {
       const achSnap = await getDocs(collection(db, "achievements"));
       setAwardsCount(achSnap.docs.length);
 
-      // 7. Fetch applications (Admin only)
-      if ((currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN) && auth.currentUser) {
+      // 7. Fetch applications (Authorized Admin/Editor only)
+      if (hasAdminPrivileges(currentUser?.role) && auth.currentUser) {
         try {
           const appsSnap = await getDocs(collection(db, "applications"));
           const appsList = appsSnap.docs.map(doc => ({ ...doc.data(), id: doc.id })) as PlatoonApplication[];
@@ -442,11 +471,24 @@ export default function App() {
 
   // Fullscreen view for Admin Dashboard
   if (location.pathname === "/admin") {
+    if (authLoading) {
+      return (
+        <div className="h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden flex items-center justify-center font-mono text-xs text-slate-500">
+          <div className="space-y-3 text-center">
+            <div className="h-6 w-6 border-2 border-army-700 dark:border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <div className="tracking-widest uppercase text-slate-600 dark:text-slate-400">Verifying Security Clearance...</div>
+          </div>
+        </div>
+      );
+    }
+
+    const hasAdminAccess = Boolean(currentUser && hasAdminPrivileges(currentUser.role));
+
     return (
       <div className="h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden selection:bg-amber-500 selection:text-white font-sans text-slate-800 dark:text-slate-100 antialiased transition-colors duration-200">
         <ScrollToTop />
         <React.Suspense fallback={<CommandArchiveSkeleton />}>
-          {(currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.SUPER_ADMIN) ? (
+          {hasAdminAccess ? (
             <AdminDashboard
               stats={stats}
               members={members}
@@ -458,14 +500,27 @@ export default function App() {
               currentUser={currentUser}
             />
           ) : (
-            <div className="max-w-md mx-auto py-16 text-center text-red-700 font-mono border border-red-200 bg-red-50 p-6 rounded mt-10 uppercase">
-              RESTRICTED SECURITY SECTOR: ADMIN AUTHORIZATION COMPROMISED.
-              <button
-                onClick={() => navigate("/")}
-                className="mt-6 block mx-auto underline font-sans text-xs font-bold text-army-800 dark:text-amber-400 uppercase tracking-wider cursor-pointer"
-              >
-                Back to Public Site
-              </button>
+            <div className="max-w-md mx-auto py-16 px-6 text-center border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-950/30 rounded-xl mt-16 shadow-lg">
+              <div className="text-red-700 dark:text-red-400 font-mono text-sm font-bold uppercase tracking-wider mb-2">
+                RESTRICTED COMMAND SECTOR
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-300 font-sans mb-6">
+                Administrative clearance is required. Please authenticate with an authorized command account.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  onClick={() => setLoginModalOpen(true)}
+                  className="px-4 py-2 bg-army-800 hover:bg-army-900 dark:bg-amber-500 dark:hover:bg-amber-600 text-white dark:text-slate-950 text-xs font-bold uppercase tracking-wider rounded transition-colors cursor-pointer"
+                >
+                  Authenticate
+                </button>
+                <button
+                  onClick={() => navigate("/")}
+                  className="px-4 py-2 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold uppercase tracking-wider rounded transition-colors cursor-pointer"
+                >
+                  Return to Portal
+                </button>
+              </div>
             </div>
           )}
         </React.Suspense>
@@ -612,7 +667,7 @@ export default function App() {
       {/* Footer Banner */}
       <footer className="bg-army-950 text-white py-12 border-t-4 border-amber-500">
         <div className="w-full max-w-[1536px] mx-auto px-4 sm:px-6 lg:px-8 2xl:px-8 grid grid-cols-1 md:grid-cols-4 gap-8 text-xs font-sans font-light">
-          {/* Column 1: Identity */}
+          {/* Column 1: Identity & Official Platoon Social */}
           <div className="space-y-4">
             <div className="flex items-center space-x-2">
               <span className="text-amber-500 font-display font-black text-sm tracking-wider uppercase">
@@ -623,6 +678,18 @@ export default function App() {
             <p className="text-slate-200 leading-relaxed text-[11px] whitespace-pre-line">
               {contactInfo.footerAbout || "The Bangladesh National Cadet Corps (BNCC) Platoon of Uttara Government College serves as a premier training command, molding disciplined future military and civil leaders."}
             </p>
+            <div className="pt-1">
+              <a
+                href={PLATOON_FACEBOOK_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center space-x-2 text-[11px] font-mono font-medium text-slate-200 hover:text-amber-400 bg-army-900/90 hover:bg-army-900 border border-army-800 hover:border-amber-500/50 px-2.5 py-1.5 rounded transition-all group shadow-sm"
+                title="Official UGC BNCC Facebook Page"
+              >
+                <FacebookIcon className="h-3.5 w-3.5 text-[#1877F2] group-hover:scale-110 transition-transform" />
+                <span>UGC BNCC</span>
+              </a>
+            </div>
           </div>
 
           {/* Column 2: Quick Links */}
@@ -751,7 +818,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Column 3: Contact Details */}
+          {/* Column 3: Contact Details & Dispatch */}
           <div className="space-y-4">
             <h4 className="font-display font-bold text-amber-500 uppercase tracking-wider text-[11px] border-b border-army-800 pb-2">
               PLATOON HQ CONTACTS
@@ -774,6 +841,17 @@ export default function App() {
                 </a>
               </li>
               <li className="flex items-center space-x-2">
+                <FacebookIcon className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                <a
+                  href={PLATOON_FACEBOOK_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-slate-200 hover:text-amber-400 transition-colors whitespace-pre-line underline decoration-slate-600 hover:decoration-amber-400"
+                >
+                  UGC BNCC
+                </a>
+              </li>
+              <li className="flex items-center space-x-2">
                 <Clock className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                 <span className="text-slate-300 text-[10.5px] whitespace-pre-line">{contactInfo.timings}</span>
               </li>
@@ -789,24 +867,81 @@ export default function App() {
               {contactInfo.legalNotice || "All digital military dossiers, cadet records, and duty rosters are protected by UGC BNCC Command regulations. Unauthorized access is strictly prohibited."}
             </p>
             <div className="text-[10px] text-slate-400 font-mono pt-1">
-              © {new Date().getFullYear()} UGC BNCC Digital Platoon.<br />
-              All rights reserved.
+              Authorized operations by Bangladesh National Cadet Corps, 3 Ramna Battalion, Ramna Regiment.
             </div>
+          </div>
+        </div>
+
+        {/* Footer Sub-Bar: Copyright, Official Platoon Social, & Developer Credits */}
+        <div className="w-full max-w-[1536px] mx-auto px-4 sm:px-6 lg:px-8 2xl:px-8 mt-10 pt-6 border-t border-army-900 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-mono text-slate-400">
+          <div className="flex flex-wrap items-center justify-center md:justify-start gap-x-4 gap-y-2 text-[11px]">
+            <span>© {new Date().getFullYear()} UGC BNCC Digital Platoon. All rights reserved.</span>
+            <span className="hidden sm:inline text-army-800">|</span>
+            <a
+              href={PLATOON_FACEBOOK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center space-x-1.5 text-slate-300 hover:text-amber-400 transition-colors"
+              title="Official UGC BNCC Facebook Page"
+            >
+              <FacebookIcon className="h-3.5 w-3.5 text-[#1877F2]" />
+              <span>Platoon Facebook</span>
+            </a>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center md:justify-end gap-x-2.5 gap-y-1 text-[11px] text-slate-400">
+            <span>Developed by</span>
+            <a
+              href={CREATOR_FACEBOOK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center space-x-1 text-slate-200 hover:text-amber-400 transition-colors font-semibold"
+              title="Developer Profile on Facebook"
+            >
+              <FacebookIcon className="h-3 w-3 text-[#1877F2]" />
+              <span>Ab Faisal Ahmed</span>
+            </a>
+            <span className="text-army-800">•</span>
+            {CREATOR_PORTFOLIO_URL ? (
+              <a
+                href={CREATOR_PORTFOLIO_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-amber-400 hover:text-amber-300 transition-colors underline decoration-slate-600 hover:decoration-amber-400"
+                title="Developer Portfolio"
+              >
+                Portfolio
+              </a>
+            ) : (
+              <a
+                href=""
+                onClick={(e) => {
+                  // Portfolio link placeholder - ready to add URL in CREATOR_PORTFOLIO_URL
+                  e.preventDefault();
+                }}
+                className="text-slate-400 hover:text-amber-400 transition-colors cursor-pointer"
+                title="Portfolio link (ready to be updated in CREATOR_PORTFOLIO_URL)"
+              >
+                Portfolio
+              </a>
+            )}
           </div>
         </div>
       </footer>
 
       {/* Authenticator Modal Popup */}
       {loginModalOpen && (
-        <LoginModal
-          onClose={() => {
-            setLoginModalOpen(false);
-            if (location.pathname === "/login") {
-              navigate("/");
-            }
-          }}
-          onLoginSuccess={handleLoginSuccess}
-        />
+        <React.Suspense fallback={null}>
+          <LoginModal
+            onClose={() => {
+              setLoginModalOpen(false);
+              if (location.pathname === "/login") {
+                navigate("/");
+              }
+            }}
+            onLoginSuccess={handleLoginSuccess}
+          />
+        </React.Suspense>
       )}
     </div>
   );

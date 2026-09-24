@@ -7,6 +7,7 @@ import React from "react";
 import { MapPin, Phone, Mail, Clock, Send, ShieldAlert, CheckCircle, Edit, Check, X, Loader2 } from "lucide-react";
 import { User, UserRole } from "../types";
 import { getSingleDocument, setSingleDocument } from "../firebaseService";
+import SEO from "./SEO";
 
 interface ContactProps {
   currentUser: User | null;
@@ -21,6 +22,18 @@ interface ContactData {
   longitude: number;
   footerAbout?: string;
   legalNotice?: string;
+}
+
+function FacebookIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fillRule="evenodd"
+        d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
 }
 
 export default function Contact({ currentUser }: ContactProps) {
@@ -180,6 +193,16 @@ export default function Contact({ currentUser }: ContactProps) {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-8">
+      <SEO
+        title="Contact Headquarters & Command Dispatch | UGC BNCC"
+        description="Contact Uttara Government College BNCC Platoon Command, 3 Ramna Battalion. Location coordinates, hotlines, office hours, and secure routing inquiry desk."
+        canonicalPath="/contact"
+        breadcrumbs={[
+          { name: "Home", url: "/" },
+          { name: "Contact", url: "/contact" }
+        ]}
+      />
+
       {/* Admin Action Panel */}
       {isAdmin && (
         <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-300/50 p-4 rounded-xl flex items-center justify-between shadow-sm">
@@ -236,9 +259,9 @@ export default function Contact({ currentUser }: ContactProps) {
           {!isEditing ? (
             // --- DISPLAY MODE: LEFT ---
             <div className="bg-[#124632] text-white p-6 rounded-xl border border-[#FFB703]/20 space-y-6">
-              <h3 className="font-display font-bold text-sm text-[#FFB703] uppercase tracking-widest">
-                PLATOON HEADQUARTERS
-              </h3>
+              <h1 className="font-display font-bold text-sm text-[#FFB703] uppercase tracking-widest">
+                PLATOON HEADQUARTERS & DISPATCH
+              </h1>
 
               <div className="space-y-4 text-xs font-sans font-light">
                 <div className="flex items-start space-x-3.5">
@@ -278,6 +301,21 @@ export default function Contact({ currentUser }: ContactProps) {
                     <p className="text-slate-100 mt-1 whitespace-pre-line leading-relaxed">
                       {data?.timings}
                     </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-3.5">
+                  <FacebookIcon className="h-5 w-5 text-[#FFB703] flex-shrink-0" />
+                  <div>
+                    <strong className="text-white block font-display">OFFICIAL FACEBOOK</strong>
+                    <a
+                      href="https://www.facebook.com/ugcBNCC"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-amber-300 hover:text-amber-200 underline decoration-amber-300/40 hover:decoration-amber-200 transition-colors mt-1 inline-block"
+                    >
+                      UGC BNCC
+                    </a>
                   </div>
                 </div>
               </div>
@@ -400,9 +438,9 @@ export default function Contact({ currentUser }: ContactProps) {
         {/* RIGHT COLUMN: Contact Correspondence Inbox */}
         <div className="lg:col-span-3 bg-white dark:bg-slate-900 p-6 md:p-8 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 self-start">
           <div className="border-b border-slate-100 dark:border-slate-800 pb-4">
-            <h3 className="font-display font-extrabold text-slate-900 dark:text-white text-base uppercase">
+            <h2 className="font-display font-extrabold text-slate-900 dark:text-white text-base uppercase">
               SECURE ROUTING INBOX
-            </h3>
+            </h2>
             <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">Submit immediate queries or feedback. Logged by duty cadets daily.</p>
           </div>
 
@@ -415,7 +453,7 @@ export default function Contact({ currentUser }: ContactProps) {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="font-mono text-slate-500 uppercase block">Sender Name</label>
                     <input

@@ -25,8 +25,13 @@ import {
   Edit,
   Trash2,
   X,
+  CheckCircle2,
+  AlertCircle,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { Member, BNCCRank, MemberStatus, User as SystemUser, UserRole, Camp, PlatoonApplication } from "../types";
+import { hasEditorPrivileges } from "../services/auth";
 import {
   subscribeToCollection,
   createDocument,
@@ -36,6 +41,7 @@ import {
   softDeleteRecord,
   generateId
 } from "../firebaseService";
+import SEO from "./SEO";
 
 interface CadetProfileProps {
   memberId: string;
@@ -88,6 +94,19 @@ function EditCadetDossier({
   const [activeTab, setActiveTab] = React.useState<"rank" | "camps" | "achievements" | "activities">(showRankTab ? "rank" : "camps");
   const [submitting, setSubmitting] = React.useState(false);
 
+  // In-Drawer Feedback and Confirmation
+  const [notifyState, setNotifyState] = React.useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [confirmModal, setConfirmModal] = React.useState<{
+    title: string;
+    message: string;
+    onConfirm: () => Promise<void>;
+  } | null>(null);
+
+  const notify = (message: string, type: "success" | "error" = "success") => {
+    setNotifyState({ message, type });
+    setTimeout(() => setNotifyState(null), 4000);
+  };
+
   // States for Rank
   const [rankForm, setRankForm] = React.useState({
     newRank: currentRank,
@@ -135,6 +154,7 @@ function EditCadetDossier({
   // Handle Rank update (Promote Rank)
   const handlePromoteRank = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setSubmitting(true);
 
     try {
@@ -150,7 +170,7 @@ function EditCadetDossier({
         // Sync current cadet rank
         await updateDocument("cadets", memberId, { rank: rankForm.newRank });
 
-        alert("Promotion record updated successfully!");
+        notify("Promotion record updated successfully!", "success");
         setEditingPromotionId(null);
       } else {
         // Create new promotion record
@@ -168,7 +188,7 @@ function EditCadetDossier({
           description: rankForm.description,
         }, pId);
 
-        alert(`Successfully promoted cadet rank to ${rankForm.newRank}!`);
+        notify(`Successfully promoted cadet rank to ${rankForm.newRank}!`, "success");
       }
 
       setRankForm({
@@ -179,7 +199,7 @@ function EditCadetDossier({
       });
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      notify(err.message || "Failed to update promotion.", "error");
     } finally {
       setSubmitting(false);
     }
@@ -195,19 +215,25 @@ function EditCadetDossier({
     });
   };
 
-  const handleDeletePromotion = async (pId: string) => {
-    if (!confirm("Are you sure you want to delete this promotion record?")) return;
-    try {
-      await deleteDocument("promotions", pId);
-      alert("Promotion record deleted!");
-      onRefresh();
-    } catch (err: any) {
-      alert(err.message);
-    }
+  const handleDeletePromotion = (pId: string) => {
+    setConfirmModal({
+      title: "DELETE PROMOTION RECORD",
+      message: "Are you sure you want to delete this promotion entry from service records?",
+      onConfirm: async () => {
+        try {
+          await deleteDocument("promotions", pId);
+          notify("Promotion record deleted!", "success");
+          onRefresh();
+        } catch (err: any) {
+          notify(err.message || "Delete failed", "error");
+        }
+      },
+    });
   };
 
   // Handle Camp actions (Toggle Attendance Checkbox and Inline Updates)
   const handleToggleCamp = async (campId: string) => {
+    if (submitting) return;
     const existingCp = camps.find((cp) => cp.campId === campId);
     setSubmitting(true);
 
@@ -215,7 +241,7 @@ function EditCadetDossier({
       if (existingCp) {
         // Unchecked: Delete participation record
         await deleteDocument("campParticipants", existingCp.id);
-        alert("Camp attendance removed!");
+        notify("Camp attendance removed!", "success");
       } else {
         // Checked: Add participation record
         const cpId = generateId("cp");
@@ -226,28 +252,29 @@ function EditCadetDossier({
           role: "Participant",
           awards: "",
         }, cpId);
-        alert("Camp attendance registered!");
+        notify("Camp attendance registered!", "success");
       }
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      notify(err.message || "Camp action failed", "error");
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleInlineSave = async (cpId: string) => {
+    if (submitting) return;
     setSubmitting(true);
     try {
       await updateDocument("campParticipants", cpId, {
         role: inlineRole,
         awards: inlineAwards,
       });
-      alert("Camp details updated successfully!");
+      notify("Camp details updated successfully!", "success");
       setInlineEditingCpId(null);
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      notify(err.message || "Failed to update camp details", "error");
     } finally {
       setSubmitting(false);
     }
@@ -256,6 +283,7 @@ function EditCadetDossier({
   // Handle Achievement actions (Add / Update / Delete)
   const handleAchievementSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setSubmitting(true);
 
     try {
@@ -268,7 +296,7 @@ function EditCadetDossier({
           memberId: memberId,
           cadetId: memberId,
         });
-        alert("Achievement updated successfully!");
+        notify("Achievement updated successfully!", "success");
       } else {
         const id = generateId("ach");
         await createDocument("achievements", {
@@ -280,7 +308,7 @@ function EditCadetDossier({
           medalType: "Gold",
           ...achievementForm,
         }, id);
-        alert("Achievement added successfully!");
+        notify("Achievement added successfully!", "success");
       }
       setAchievementForm({
         title: "",
@@ -292,7 +320,7 @@ function EditCadetDossier({
       setEditingAchievementId(null);
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      notify(err.message || "Failed to save achievement", "error");
     } finally {
       setSubmitting(false);
     }
@@ -309,26 +337,32 @@ function EditCadetDossier({
     });
   };
 
-  const handleDeleteAchievement = async (achId: string) => {
-    if (!confirm("Are you sure you want to delete this achievement record?")) return;
-    try {
-      await deleteDocument("achievements", achId);
-      alert("Achievement record deleted!");
-      onRefresh();
-    } catch (err: any) {
-      alert(err.message);
-    }
+  const handleDeleteAchievement = (achId: string) => {
+    setConfirmModal({
+      title: "DELETE ACHIEVEMENT RECORD",
+      message: "Are you sure you want to remove this achievement from cadet records?",
+      onConfirm: async () => {
+        try {
+          await deleteDocument("achievements", achId);
+          notify("Achievement record deleted!", "success");
+          onRefresh();
+        } catch (err: any) {
+          notify(err.message || "Failed to delete achievement", "error");
+        }
+      },
+    });
   };
 
   // Handle Activity actions (Add / Update / Delete)
   const handleActivitySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setSubmitting(true);
 
     try {
       if (editingActivityId) {
         await updateDocument("activities", editingActivityId, activityForm);
-        alert("Activity updated successfully!");
+        notify("Activity updated successfully!", "success");
       } else {
         const id = generateId("act");
         await createDocument("activities", {
@@ -336,7 +370,7 @@ function EditCadetDossier({
           memberId,
           ...activityForm,
         }, id);
-        alert("Activity added successfully!");
+        notify("Activity added successfully!", "success");
       }
       setActivityForm({
         activityName: "",
@@ -346,7 +380,7 @@ function EditCadetDossier({
       setEditingActivityId(null);
       onRefresh();
     } catch (err: any) {
-      alert(err.message);
+      notify(err.message || "Failed to save activity", "error");
     } finally {
       setSubmitting(false);
     }
@@ -361,15 +395,20 @@ function EditCadetDossier({
     });
   };
 
-  const handleDeleteActivity = async (actId: string) => {
-    if (!confirm("Are you sure you want to delete this activity record?")) return;
-    try {
-      await deleteDocument("activities", actId);
-      alert("Activity record deleted!");
-      onRefresh();
-    } catch (err: any) {
-      alert(err.message);
-    }
+  const handleDeleteActivity = (actId: string) => {
+    setConfirmModal({
+      title: "DELETE ACTIVITY RECORD",
+      message: "Are you sure you want to delete this activity entry?",
+      onConfirm: async () => {
+        try {
+          await deleteDocument("activities", actId);
+          notify("Activity record deleted!", "success");
+          onRefresh();
+        } catch (err: any) {
+          notify(err.message || "Failed to delete activity", "error");
+        }
+      },
+    });
   };
 
   return (
@@ -390,6 +429,74 @@ function EditCadetDossier({
           {isAdmin ? "ADMIN" : "CADET"}
         </span>
       </div>
+
+      {/* In-Drawer Feedback Notification */}
+      {notifyState && (
+        <div
+          role={notifyState.type === "error" ? "alert" : "status"}
+          className={`p-3 rounded-lg text-xs font-mono flex items-center justify-between space-x-2 border transition-all ${
+            notifyState.type === "success"
+              ? "bg-emerald-950/90 border-emerald-500/40 text-emerald-200"
+              : "bg-rose-950/90 border-rose-500/50 text-rose-200"
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            {notifyState.type === "success" ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
+            )}
+            <span className="leading-snug">{notifyState.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setNotifyState(null)}
+            className="text-slate-400 hover:text-white p-0.5"
+            aria-label="Dismiss notification"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* In-Drawer Confirmation Dialog */}
+      {confirmModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs"
+        >
+          <div className="bg-slate-900 border border-rose-500/40 rounded-xl p-5 max-w-sm w-full space-y-3.5 shadow-2xl">
+            <div className="flex items-center space-x-2.5 text-rose-400">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <h4 className="text-xs font-mono font-bold uppercase tracking-wider">{confirmModal.title}</h4>
+            </div>
+            <p className="text-xs text-slate-300 font-sans leading-relaxed">{confirmModal.message}</p>
+            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className="px-3 py-1.5 rounded text-xs font-mono text-slate-300 hover:bg-slate-800 border border-slate-700 min-h-[36px]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await confirmModal.onConfirm();
+                  } finally {
+                    setConfirmModal(null);
+                  }
+                }}
+                className="px-3.5 py-1.5 rounded text-xs font-mono font-bold bg-rose-600 hover:bg-rose-700 text-white min-h-[36px]"
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabs list */}
       <div className={`grid ${showRankTab ? "grid-cols-4" : "grid-cols-3"} gap-1 border-b border-slate-800 pb-2`}>
@@ -916,14 +1023,23 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
   const [allCamps, setAllCamps] = React.useState<Camp[]>([]);
 
   const [photoUploading, setPhotoUploading] = React.useState(false);
+  const [profileNotification, setProfileNotification] = React.useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [deleteProfileDialog, setDeleteProfileDialog] = React.useState(false);
+  const [deletingProfile, setDeletingProfile] = React.useState(false);
+
+  const showProfileNotice = (message: string, type: "success" | "error" = "success") => {
+    setProfileNotification({ message, type });
+    setTimeout(() => setProfileNotification(null), 4000);
+  };
 
   const handleChangePhoto = async (newPhotoUrl: string) => {
+    if (photoUploading) return;
     setPhotoUploading(true);
     try {
       await updateDocument("cadets", memberId, { photoUrl: newPhotoUrl });
-      alert("Profile photo successfully updated!");
+      showProfileNotice("Profile photo successfully updated!", "success");
     } catch (err: any) {
-      alert(err.message);
+      showProfileNotice(err.message || "Failed to update profile photo", "error");
     } finally {
       setPhotoUploading(false);
     }
@@ -1265,15 +1381,20 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
       processDossier();
     });
 
-    const unsubEventRegs = subscribeToCollection<any>("eventRegistrations", (list) => {
-      rawEventRegistrations = list;
-      processDossier();
-    });
+    let unsubEventRegs = () => {};
+    let unsubApplications = () => {};
 
-    const unsubApplications = subscribeToCollection<PlatoonApplication>("applications", (list) => {
-      rawApplications = list;
-      processDossier();
-    });
+    if (currentUser && hasEditorPrivileges(currentUser.role)) {
+      unsubEventRegs = subscribeToCollection<any>("eventRegistrations", (list) => {
+        rawEventRegistrations = list;
+        processDossier();
+      });
+
+      unsubApplications = subscribeToCollection<PlatoonApplication>("applications", (list) => {
+        rawApplications = list;
+        processDossier();
+      });
+    }
 
     return () => {
       unsubCadets();
@@ -1288,7 +1409,7 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
       unsubEventRegs();
       unsubApplications();
     };
-  }, [memberId]);
+  }, [memberId, currentUser]);
 
   if (loading) {
     return (
@@ -1379,7 +1500,114 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
 
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-10 space-y-10">
+    <div className="max-w-5xl mx-auto px-4 py-10 space-y-10 relative">
+      {/* Profile-level toast notification */}
+      {profileNotification && (
+        <div
+          role={profileNotification.type === "error" ? "alert" : "status"}
+          className={`fixed top-5 right-5 z-[100] max-w-md p-4 rounded-xl shadow-xl flex items-center justify-between space-x-3 border font-mono text-xs ${
+            profileNotification.type === "success"
+              ? "bg-slate-900 border-emerald-500/50 text-emerald-200"
+              : "bg-slate-900 border-rose-500/50 text-rose-200"
+          }`}
+        >
+          <div className="flex items-center space-x-2.5">
+            {profileNotification.type === "success" ? (
+              <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="h-5 w-5 text-rose-400 shrink-0" />
+            )}
+            <span className="font-sans leading-snug">{profileNotification.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setProfileNotification(null)}
+            className="text-slate-400 hover:text-white p-1"
+            aria-label="Dismiss alert"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Profile-level delete confirmation modal */}
+      {deleteProfileDialog && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs"
+        >
+          <div className="bg-slate-900 border border-rose-600/50 rounded-xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <div className="flex items-center space-x-3 text-rose-400">
+              <AlertTriangle className="h-6 w-6 shrink-0" />
+              <h3 className="text-sm font-mono font-bold uppercase tracking-wider">
+                CONFIRM CADET PROFILE DELETION
+              </h3>
+            </div>
+            <p className="text-xs text-slate-300 font-sans leading-relaxed">
+              CRITICAL SECTOR ALERT: You are about to move this cadet's official BNCC service record,
+              including promotion logs, achievements, and camp participation to the institutional Recycle Bin.
+            </p>
+            <div className="flex justify-end space-x-3 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                disabled={deletingProfile}
+                onClick={() => setDeleteProfileDialog(false)}
+                className="px-4 py-2 rounded-lg text-xs font-mono text-slate-300 hover:bg-slate-800 border border-slate-700 min-h-[40px] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingProfile}
+                onClick={async () => {
+                  setDeletingProfile(true);
+                  try {
+                    await softDeleteRecord(
+                      "cadets",
+                      member.id,
+                      `${member.rank} ${member.fullName}`,
+                      member,
+                      currentUser?.email || "admin@ugcbncc.org",
+                      currentUser?.id || "admin"
+                    );
+                    showProfileNotice("Profile successfully moved to Recycle Bin.", "success");
+                    setDeleteProfileDialog(false);
+                    setTimeout(() => onBack(), 1200);
+                  } catch (err: any) {
+                    showProfileNotice(err.message || "Failed to delete profile", "error");
+                    setDeletingProfile(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-lg text-xs font-mono font-bold bg-rose-600 hover:bg-rose-700 text-white min-h-[40px] flex items-center space-x-1.5 disabled:opacity-50"
+              >
+                {deletingProfile ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Archiving...</span>
+                  </>
+                ) : (
+                  <span>Confirm Delete</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <SEO
+        title={`${member.rank} ${member.fullName} | UGC BNCC Service Record`}
+        description={`Verified military service record, promotions, training camps, and commendations of ${member.rank} ${member.fullName} at Uttara Government College BNCC Platoon.`}
+        canonicalPath={`/cadets/${member.id}`}
+        ogType="profile"
+        ogImage={member.photoUrl}
+        breadcrumbs={[
+          { name: "Home", url: "/" },
+          { name: "Cadet Directory", url: "/directory" },
+          { name: member.fullName, url: `/cadets/${member.id}` }
+        ]}
+      />
+
       {/* Back button */}
       <button
         onClick={onBack}
@@ -1396,36 +1624,16 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
             <span className="text-[9px] font-mono tracking-widest text-amber-400 uppercase block">
               OFFICIAL SERVICE PROFILE
             </span>
-            <h2 className="text-xl font-display font-extrabold tracking-wider uppercase text-white">
+            <h1 className="text-xl font-display font-extrabold tracking-wider uppercase text-white">
               {member.fullName}
-            </h2>
+            </h1>
           </div>
           <div className="flex items-center space-x-2">
             {isAdmin && (
               <button
-                onClick={async () => {
-                  if (
-                    window.confirm(
-                      "CRITICAL SECTOR ALERT: You are about to permanently delete this cadet's official BNCC service record, including promotion logs, achievements, camp listings, and system authentication credentials. This action is irreversible. Confirm delete?"
-                    )
-                  ) {
-                    try {
-                      await softDeleteRecord(
-                        "cadets",
-                        member.id,
-                        `${member.rank} ${member.fullName}`,
-                        member,
-                        currentUser?.email || "admin@ugcbncc.org",
-                        currentUser?.id || "admin"
-                      );
-                      alert("Profile successfully deleted from UGC BNCC archives.");
-                      onBack();
-                    } catch (err: any) {
-                      alert(err.message);
-                    }
-                  }
-                }}
-                className="bg-red-600/90 hover:bg-red-700 text-white font-mono text-xs font-bold px-3 py-1.5 rounded flex items-center space-x-1 transition-all cursor-pointer shadow"
+                type="button"
+                onClick={() => setDeleteProfileDialog(true)}
+                className="bg-red-600/90 hover:bg-red-700 text-white font-mono text-xs font-bold px-3 py-1.5 rounded flex items-center space-x-1 transition-all cursor-pointer shadow min-h-[36px]"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 <span>DELETE PROFILE</span>
@@ -1443,7 +1651,7 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
             <div className="relative">
               <img
                 src={member.photoUrl}
-                alt={member.fullName}
+                alt={`Official Service Portrait - Cadet ${member.rank} ${member.fullName}`}
                 className="w-40 h-40 rounded-lg object-cover border-4 border-slate-100 dark:border-slate-800 shadow-md"
                 referrerPolicy="no-referrer"
                 loading="lazy"

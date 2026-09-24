@@ -309,6 +309,30 @@
     "/activityLogs/{logId}": {
       "schema": "ActivityLog",
       "description": "Audit trails"
+    },
+    "/trash/{trashId}": {
+      "description": "Recycle bin / soft-deleted documents"
+    },
+    "/camps/{campId}": {
+      "description": "Camps and exercises"
+    },
+    "/campParticipants/{participantId}": {
+      "description": "Camp attendance and participation"
+    },
+    "/eventAttendance/{attendanceId}": {
+      "description": "Drill and event attendance muster"
+    },
+    "/eventRegistrations/{regId}": {
+      "description": "Event RSVPs and registrations"
+    },
+    "/promotions/{promotionId}": {
+      "description": "Cadet promotion history"
+    },
+    "/certificates/{certificateId}": {
+      "description": "Cadet certificates"
+    },
+    "/activities/{activityId}": {
+      "description": "Social and community service activities"
     }
   }
 }

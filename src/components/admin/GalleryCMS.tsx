@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { subscribeToCollection, createDocument, updateDocument, softDeleteRecord, generateId } from "../../firebaseService";
 import { auth, uploadFileToStorage } from "../../firebase";
+import { validateImageFile } from "../../utils/fileValidation";
 
 interface GalleryCMSProps {
   onRefresh: () => void;
@@ -209,18 +210,19 @@ export default function GalleryCMS({ onRefresh }: GalleryCMSProps) {
 
   // Direct File Upload handling
   const processSelectedFile = async (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      showToast("Please select a valid image file (PNG, JPG, WEBP, etc.).", "error");
+    const validation = validateImageFile(file, 15 * 1024 * 1024);
+    if (!validation.valid) {
+      showToast(validation.error || "Please select a valid image under 15MB.", "error");
       return;
     }
+
     setUploadProgress(15);
     try {
-      const filename = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
-      const url = await uploadFileToStorage(file, "gallery", filename, (p) => {
+      const url = await uploadFileToStorage(file, "gallery", validation.cleanFilename, (p) => {
         setUploadProgress(Math.max(15, Math.round(p)));
       });
       setForm((prev) => ({ ...prev, imageUrl: url }));
-      showToast(`Image "${file.name}" uploaded successfully!`, "success");
+      showToast(`Image "${file.name}" uploaded successfully to Cloud Storage!`, "success");
     } catch (err: any) {
       console.warn("Storage upload failed/timed out, fallback to FileReader Data URL:", err);
       setUploadProgress(60);
@@ -232,9 +234,9 @@ export default function GalleryCMS({ onRefresh }: GalleryCMSProps) {
           reader.readAsDataURL(file);
         });
         setForm((prev) => ({ ...prev, imageUrl: dataUrl }));
-        showToast(`Image "${file.name}" loaded successfully (Data URL)`, "success");
+        showToast(`Image loaded locally (Storage note: ${err?.message || "fallback mode"})`, "info");
       } catch (readErr: any) {
-        showToast("Failed to process image file.", "error");
+        showToast(`Failed to process image: ${err?.message || "Unknown error"}`, "error");
       }
     } finally {
       setUploadProgress(null);
@@ -441,14 +443,14 @@ export default function GalleryCMS({ onRefresh }: GalleryCMSProps) {
           {/* Filters controls bar */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 space-y-3 shadow-sm">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="relative flex-1 max-w-md">
+              <div className="relative w-full md:max-w-md">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Search by caption, description..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 pr-4 py-1.5 w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded text-xs focus:outline-none focus:border-amber-500"
+                  className="pl-9 pr-4 py-1.5 w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-850 rounded text-xs focus:outline-none focus:border-amber-500"
                 />
               </div>
 
@@ -473,7 +475,7 @@ export default function GalleryCMS({ onRefresh }: GalleryCMSProps) {
 
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-850 pt-3">
               {/* Sort controls */}
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-slate-400 uppercase text-[10px]">Sort by:</span>
                 <button
                   onClick={() => {
@@ -547,7 +549,7 @@ export default function GalleryCMS({ onRefresh }: GalleryCMSProps) {
 
           {/* Grid Layout list with image previews */}
           {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {[1, 2, 3, 4, 5, 6].map((idx) => (
                 <div key={idx} className="bg-slate-100 dark:bg-slate-900 rounded-xl p-3 border border-slate-200 dark:border-slate-800 space-y-3 animate-pulse">
                   <div className="aspect-video bg-slate-300 dark:bg-slate-800 rounded-lg"></div>
@@ -561,7 +563,7 @@ export default function GalleryCMS({ onRefresh }: GalleryCMSProps) {
               NO PHOTO MEDIA ASSETS INDEXED UNDER SPECIFIED CRITERIA.
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {paginatedPhotos.map((photo) => {
                 const isChecked = selectedIds.includes(photo.id);
                 return (
