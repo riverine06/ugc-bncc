@@ -13,8 +13,8 @@ export interface SEOProps {
   structuredData?: Record<string, any> | Record<string, any>[];
 }
 
-const DEFAULT_SITE_NAME = "Uttara Government College BNCC Platoon";
-const DEFAULT_FALLBACK_IMAGE = "https://images.unsplash.com/photo-1541872703-74c5e44368f9?q=80&w=1200&auto=format&fit=crop";
+const DEFAULT_SITE_NAME = "UGC BNCC Digital Platoon | Uttara Government College";
+const DEFAULT_FALLBACK_IMAGE = "https://gen-lang-client-0233535895.web.app/og-image.png";
 
 export default function SEO({
   title,
@@ -59,7 +59,7 @@ export default function SEO({
     };
 
     // 2. Canonical URL Resolution
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://ugcbncc.org";
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://gen-lang-client-0233535895.web.app";
     const path = canonicalPath || (typeof window !== "undefined" ? window.location.pathname : "/");
     const canonicalUrl = `${origin}${path.startsWith("/") ? "" : "/"}${path}`;
     setLinkTag("canonical", canonicalUrl);
@@ -69,13 +69,16 @@ export default function SEO({
     setMetaTag("name", "robots", noIndex ? "noindex, nofollow, noarchive" : "index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1");
 
     // 4. OpenGraph Tags
-    const resolvedImage = ogImage || DEFAULT_FALLBACK_IMAGE;
+    const rawImage = ogImage || DEFAULT_FALLBACK_IMAGE;
+    const resolvedImage = rawImage.startsWith("http") ? rawImage : `${origin}${rawImage.startsWith("/") ? "" : "/"}${rawImage}`;
     setMetaTag("property", "og:site_name", DEFAULT_SITE_NAME);
     setMetaTag("property", "og:type", ogType);
     setMetaTag("property", "og:title", formattedTitle);
     setMetaTag("property", "og:description", description);
     setMetaTag("property", "og:url", canonicalUrl);
     setMetaTag("property", "og:image", resolvedImage);
+    setMetaTag("property", "og:image:secure_url", resolvedImage);
+    setMetaTag("property", "og:image:alt", formattedTitle);
     setMetaTag("property", "og:locale", "en_US");
 
     // 5. Twitter / X Cards
@@ -83,6 +86,7 @@ export default function SEO({
     setMetaTag("name", "twitter:title", formattedTitle);
     setMetaTag("name", "twitter:description", description);
     setMetaTag("name", "twitter:image", resolvedImage);
+    setMetaTag("name", "twitter:image:alt", formattedTitle);
 
     // 6. JSON-LD Structured Data
     const structuredDataPayloads: any[] = [];

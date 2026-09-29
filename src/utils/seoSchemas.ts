@@ -17,8 +17,8 @@ export const PLATOON_ORGANIZATION_SCHEMA = {
     "UGC BNCC",
     "Uttara Govt College BNCC"
   ],
-  "url": "https://ugcbncc.org/",
-  "logo": "https://ugcbncc.org/assets/logo.png",
+  "url": "https://gen-lang-client-0233535895.web.app/",
+  "logo": "https://gen-lang-client-0233535895.web.app/Bncc_logo.png",
   "description": "Official digital platform and command operations of the Bangladesh National Cadet Corps (BNCC) Platoon of Uttara Government College under 3 Ramna Battalion, Ramna Regiment, established in 2018.",
   "foundingDate": "2018",
   "parentOrganization": {
@@ -46,8 +46,8 @@ export const PLATOON_ORGANIZATION_SCHEMA = {
 export const WEBSITE_SCHEMA = {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  "@id": "https://ugcbncc.org/#website",
-  "url": "https://ugcbncc.org/",
+  "@id": "https://gen-lang-client-0233535895.web.app/#website",
+  "url": "https://gen-lang-client-0233535895.web.app/",
   "name": "UGC BNCC Digital Platoon Portal",
   "description": "Public records, cadet roster, recruitment portal, event schedule, and training archive for UGC BNCC Platoon.",
   "publisher": {

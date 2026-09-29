@@ -936,7 +936,7 @@ export default function App() {
             onClose={() => {
               setLoginModalOpen(false);
               if (location.pathname === "/login") {
-                navigate("/");
+                navigate(-1);
               }
             }}
             onLoginSuccess={handleLoginSuccess}

@@ -25,4 +25,4 @@ Disallow: /api/*
 Crawl-delay: 1
 
 # Sitemap reference
-Sitemap: https://ugcbncc.org/sitemap.xml
+Sitemap: https://gen-lang-client-0233535895.web.app/sitemap.xml

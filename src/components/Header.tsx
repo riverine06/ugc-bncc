@@ -167,6 +167,16 @@ const Header = React.memo(function Header({
     };
   }, []);
 
+  const handleNavLinkClick = (path: string = "") => {
+    const isSameTab = path ? (location.pathname === path || (path === "/" && location.pathname === "/")) : false;
+    if (isSameTab) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      document.documentElement.scrollTo({ top: 0, behavior: "smooth" });
+      document.body.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    setMobileMenuOpen(false);
+  };
+
   const handleNavClick = (id: string, path: string = "") => {
     const isSameTab = path ? (location.pathname === path || (path === "/" && location.pathname === "/")) : false;
     if (isSameTab) {
@@ -229,7 +239,7 @@ const Header = React.memo(function Header({
                   key={item.id}
                   to={item.path}
                   end={item.path === "/"}
-                  onClick={() => handleNavClick(item.id, item.path)}
+                  onClick={() => handleNavLinkClick(item.path)}
                   className={({ isActive }) =>
                     `relative px-1.5 xl:px-2 2xl:px-3 py-1.5 rounded-lg font-sans text-[10px] xl:text-[11px] 2xl:text-xs tracking-normal 2xl:tracking-wider transition-all duration-200 uppercase whitespace-nowrap shrink-0 flex items-center ${
                       isActive
@@ -274,9 +284,6 @@ const Header = React.memo(function Header({
                     value={searchQuery}
                     onChange={(e) => {
                       onSearch(e.target.value);
-                      if (currentTab !== "directory") {
-                        onChangeTab("directory");
-                      }
                     }}
                     onBlur={() => {
                       if (!searchQuery) {
@@ -465,7 +472,7 @@ const Header = React.memo(function Header({
                     key={item.id}
                     to={item.path}
                     end={item.path === "/"}
-                    onClick={() => handleNavClick(item.id, item.path)}
+                    onClick={() => handleNavLinkClick(item.path)}
                     className={({ isActive }) =>
                       `block w-full text-center px-3 py-2.5 rounded-lg text-xs font-bold transition-all ${
                         isActive 
@@ -489,9 +496,6 @@ const Header = React.memo(function Header({
                   value={searchQuery}
                   onChange={(e) => {
                     onSearch(e.target.value);
-                    if (currentTab !== "directory") {
-                      onChangeTab("directory");
-                    }
                   }}
                   className="bg-[#0E1A2B] border border-[#22324A] rounded-lg py-2 pl-9 pr-8 text-xs focus:outline-none focus:border-[#FFB400] w-full text-slate-100 placeholder-slate-400 font-mono"
                 />

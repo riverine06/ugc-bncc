@@ -18,6 +18,15 @@
         ]
       },
       {
+        "source": "/@(og-image.*|Bncc_logo.*|favicon.*)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=300, must-revalidate"
+          }
+        ]
+      },
+      {
         "source": "/robots.txt",
         "headers": [
           {
