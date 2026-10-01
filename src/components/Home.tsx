@@ -30,7 +30,7 @@ import {
   User as UserIcon,
   AlertTriangle,
 } from "lucide-react";
-import { Announcement, PlatoonEvent, Member, GalleryItem, User, UserRole, LeadershipReference, MemberStatus } from "../types";
+import { Announcement, PlatoonEvent, Member, GalleryItem, User, UserRole, LeadershipReference, MemberStatus, BNCCRank } from "../types";
 import ImageField from "./ImageField";
 import RichTextEditor from "./RichTextEditor";
 import SEO from "./SEO";
@@ -1098,11 +1098,17 @@ const Home = React.memo(function Home({
                                     <strong className="text-xs uppercase truncate">{m.fullName}</strong>
                                     <span className="text-[10px] text-amber-400/90 font-mono flex-shrink-0">({m.rank})</span>
                                   </div>
-                                  <span className="font-mono text-[9px] text-slate-400">ID: {m.id}</span>
+                                  {!(m.rank === BNCCRank.PLATOON_UNDER_OFFICER || m.rank === "Platoon Under Officer (PUO)" || m.status === MemberStatus.PLATOON_OFFICER || m.status === MemberStatus.FORMER_PUO) ? (
+                                    <span className="font-mono text-[9px] text-slate-400">ID: {m.id}</span>
+                                  ) : (
+                                    <span className="font-mono text-[9px] text-amber-400 font-bold uppercase">
+                                      {m.status === MemberStatus.FORMER_PUO ? "Former PUO" : "Platoon Commander"}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                               <span className="font-mono text-[9px] bg-army-800/80 text-amber-400 border border-amber-500/40 px-2 py-0.5 rounded font-bold uppercase ml-2 flex-shrink-0">
-                                Active Cadet
+                                {m.rank === BNCCRank.PLATOON_UNDER_OFFICER || m.status === MemberStatus.PLATOON_OFFICER ? "Faculty PUO" : "Active Cadet"}
                               </span>
                             </div>
                           );
@@ -1160,7 +1166,16 @@ const Home = React.memo(function Home({
                                     <strong className="text-xs uppercase truncate">{m.fullName}</strong>
                                     <span className="text-[10px] text-slate-300/80 font-mono flex-shrink-0">({m.rank})</span>
                                   </div>
-                                  <span className="font-mono text-[9px] text-slate-400">ID: {m.id}</span>
+                                  {!(m.rank === BNCCRank.PLATOON_UNDER_OFFICER || m.rank === "Platoon Under Officer (PUO)" || m.status === MemberStatus.PLATOON_OFFICER || m.status === MemberStatus.FORMER_PUO) ? (
+                                    <span className="font-mono text-[9px] text-slate-400">ID: {m.id}</span>
+                                  ) : (
+                                    <span className="font-mono text-[9px] text-amber-400 font-bold uppercase">Former PUO</span>
+                                  )}
+                                  {(m.currentProfession || m.currentOrganization) && (
+                                    <span className="text-[9px] text-amber-300 truncate max-w-[200px]">
+                                      {m.currentProfession} {m.currentOrganization ? `@ ${m.currentOrganization}` : ""}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                               <span className="font-mono text-[9px] bg-slate-800 text-slate-300 border border-slate-600 px-2 py-0.5 rounded font-bold uppercase ml-2 flex-shrink-0">
@@ -1478,14 +1493,18 @@ const Home = React.memo(function Home({
 
                 <div className="mt-4 pt-3 border-t border-army-850">
                   <div className="flex justify-between items-center text-[10px]">
-                    <div>
-                      <span className="text-army-400 block font-mono">CURRENT SERVICE</span>
-                      <strong className="text-white block font-display truncate max-w-[150px]">
-                        {alum.currentProfession}
-                      </strong>
-                      <span className="text-army-300 block truncate max-w-[150px]">
-                        {alum.currentOrganization}
-                      </span>
+                    <div className="min-w-0 pr-2">
+                      <span className="text-amber-400 block font-mono text-[9px] font-bold uppercase tracking-wider">CURRENT SERVICE</span>
+                      {alum.currentProfession && (
+                        <strong className="text-white block font-display text-xs truncate max-w-[180px]" title={alum.currentProfession}>
+                          {alum.currentProfession}
+                        </strong>
+                      )}
+                      {alum.currentOrganization && (
+                        <span className="text-amber-300 block text-[10px] truncate max-w-[180px]" title={alum.currentOrganization}>
+                          @ {alum.currentOrganization}
+                        </span>
+                      )}
                     </div>
                     <button
                       onClick={() => onSelectMember(alum.id)}

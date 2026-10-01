@@ -5,7 +5,7 @@
 
 import React from "react";
 import { motion } from "motion/react";
-import { Search, UserCheck, Briefcase, MapPin, Award, Compass, RefreshCw, Star, ShieldCheck } from "lucide-react";
+import { Search, UserCheck, Briefcase, MapPin, Award, Compass, RefreshCw, Star, ShieldCheck, Building2 } from "lucide-react";
 import { Member, BNCCRank, MemberStatus } from "../types";
 import { subscribeToCollection } from "../firebaseService";
 import { useDebounce } from "../utils/useDebounce";
@@ -161,7 +161,7 @@ export default function CadetDirectory({
     if (activeTab === "active") {
       matchesTab = member.status === MemberStatus.ACTIVE_CADET && member.rank !== BNCCRank.PLATOON_UNDER_OFFICER;
     } else if (activeTab === "officers") {
-      matchesTab = member.status === MemberStatus.PLATOON_OFFICER || member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.isArmyStaff === true;
+      matchesTab = member.status === MemberStatus.PLATOON_OFFICER || member.status === MemberStatus.FORMER_PUO || member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.isArmyStaff === true;
     } else if (activeTab === "alumni") {
       matchesTab = member.status === MemberStatus.ALUMNI;
     }
@@ -293,7 +293,7 @@ export default function CadetDirectory({
             }`}
           >
             <ShieldCheck className="h-3.5 w-3.5 text-amber-500" />
-            <span>Platoon Officers ({members.filter((m) => m.status === MemberStatus.PLATOON_OFFICER || m.rank === BNCCRank.PLATOON_UNDER_OFFICER || m.isArmyStaff).length})</span>
+            <span>Platoon Officers ({members.filter((m) => m.status === MemberStatus.PLATOON_OFFICER || m.status === MemberStatus.FORMER_PUO || m.rank === BNCCRank.PLATOON_UNDER_OFFICER || m.isArmyStaff).length})</span>
           </button>
           <button
             onClick={() => {
@@ -418,16 +418,29 @@ export default function CadetDirectory({
                       <img
                         src={member.photoUrl}
                         alt={`Cadet ${member.rank} ${member.fullName} Official Uniform Portrait`}
-                        className="w-16 h-16 rounded-full border-2 border-army-600 object-cover shadow-sm flex-shrink-0"
+                        className="w-16 h-16 rounded-full border-2 border-army-600 object-cover shadow-sm flex-shrink-0 cursor-pointer hover:border-amber-500 hover:scale-105 transition-all"
+                        onClick={() => onSelectMember(member.id)}
+                        title="Click to view cadet profile"
                         loading="lazy"
                         decoding="async"
                         referrerPolicy="no-referrer"
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center space-x-1 flex-wrap gap-1">
-                          <span className="text-[9px] bg-amber-100 text-amber-950 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/70 dark:border-amber-500/40 font-bold px-1.5 py-0.5 rounded font-mono uppercase">
-                            {member.rank}
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded font-mono uppercase ${
+                            member.status === MemberStatus.FORMER_PUO
+                              ? "bg-slate-800 text-amber-300 border border-amber-500/40"
+                              : member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER
+                              ? "bg-amber-500 text-slate-950 font-black"
+                              : "bg-amber-100 text-amber-950 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/70 dark:border-amber-500/40"
+                          }`}>
+                            {member.status === MemberStatus.FORMER_PUO ? "Former PUO" : member.rank}
                           </span>
+                          {member.status === MemberStatus.FORMER_PUO && (
+                            <span className="text-[8px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold px-1 py-0.5 rounded font-mono">
+                              ROLL OF HONOR
+                            </span>
+                          )}
                           {member.verified && (
                             <span className="text-[8px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 font-bold px-1 py-0.5 rounded font-mono">
                               VERIFIED
@@ -437,7 +450,9 @@ export default function CadetDirectory({
                         <h3 className="font-display font-bold text-slate-900 dark:text-white mt-1 hover:text-army-700 dark:hover:text-amber-400 cursor-pointer text-sm" onClick={() => onSelectMember(member.id)}>
                           {member.fullName}
                         </h3>
-                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">ID: {member.id}</p>
+                        {!(member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER || member.status === MemberStatus.FORMER_PUO) && (
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">ID: {member.id}</p>
+                        )}
                       </div>
                     </div>
 
@@ -445,15 +460,15 @@ export default function CadetDirectory({
                     <div className="bg-slate-50 dark:bg-slate-950/60 p-3 rounded space-y-1 text-[11px] text-slate-600 dark:text-slate-400 font-mono border border-slate-100 dark:border-slate-800">
                       <div className="flex justify-between gap-2">
                         <span>
-                          {member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER
-                            ? "DESIGNATION / GROUP:"
+                          {member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER || member.status === MemberStatus.FORMER_PUO
+                            ? "DESIGNATION / DEPT:"
                             : "HSC GROUP:"}
                         </span>
                         <strong className="text-slate-900 dark:text-slate-200 truncate max-w-[140px]" title={member.department}>{member.department}</strong>
                       </div>
                       <div className="flex justify-between gap-2">
                         <span>
-                          {member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER
+                          {member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER || member.status === MemberStatus.FORMER_PUO
                             ? "SERVICE SESSION:"
                             : "SESSION:"}
                         </span>
@@ -461,12 +476,18 @@ export default function CadetDirectory({
                       </div>
                       <div className="flex justify-between gap-2">
                         <span>
-                          {member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER
+                          {member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER || member.status === MemberStatus.FORMER_PUO
                             ? "APPOINTED YEAR:"
                             : "JOIN YEAR:"}
                         </span>
                         <strong className="text-slate-900 dark:text-slate-200">{member.joiningYear}</strong>
                       </div>
+                      {(member.servicePeriod || member.status === MemberStatus.FORMER_PUO || member.status === MemberStatus.PLATOON_OFFICER) && (
+                        <div className="flex justify-between gap-2 text-amber-700 dark:text-amber-400 font-bold">
+                          <span>TENURE:</span>
+                          <strong className="truncate max-w-[140px]">{member.servicePeriod || `${member.joiningYear} - Present`}</strong>
+                        </div>
+                      )}
                       {member.status === MemberStatus.ALUMNI && member.graduationYear && (
                         <div className="flex justify-between gap-2 text-amber-700 dark:text-amber-500">
                           <span>GRAD YEAR:</span>
@@ -475,21 +496,33 @@ export default function CadetDirectory({
                       )}
                     </div>
 
-                    {/* Show current profession if alumni */}
-                    {member.status === MemberStatus.ALUMNI && member.currentProfession && (
-                      <div className="mt-3.5 space-y-1 border-t border-slate-100 dark:border-slate-800 pt-3">
-                        <div className="flex items-center space-x-1.5 text-xs text-slate-800 dark:text-slate-200">
-                          <Briefcase className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
-                          <span className="font-sans font-medium line-clamp-1">{member.currentProfession}</span>
-                        </div>
+                    {/* Show current profession and company if alumni */}
+                    {(member.status === MemberStatus.ALUMNI || member.currentProfession || member.currentOrganization) && (member.currentProfession || member.currentOrganization) && (
+                      <div className="mt-3.5 space-y-1.5 border-t border-slate-100 dark:border-slate-800 pt-3">
+                        <span className="text-[9px] font-mono text-slate-400 uppercase font-bold tracking-wider block">
+                          Current Service:
+                        </span>
+                        {member.currentProfession && (
+                          <div className="flex items-start space-x-1.5 text-xs text-slate-800 dark:text-slate-200">
+                            <Briefcase className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+                            <div className="min-w-0">
+                              <span className="text-[9px] font-mono text-slate-400 uppercase block leading-none">Designation:</span>
+                              <span className="font-sans font-semibold text-slate-900 dark:text-slate-100">{member.currentProfession}</span>
+                            </div>
+                          </div>
+                        )}
                         {member.currentOrganization && (
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500 ml-5 truncate max-w-[200px]">
-                            {member.currentOrganization}
-                          </p>
+                          <div className="flex items-start space-x-1.5 text-xs text-amber-600 dark:text-amber-400">
+                            <Building2 className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+                            <div className="min-w-0">
+                              <span className="text-[9px] font-mono text-slate-400 uppercase block leading-none">Company:</span>
+                              <span className="font-sans font-semibold">{member.currentOrganization}</span>
+                            </div>
+                          </div>
                         )}
                         {member.currentCity && (
                           <div className="flex items-center space-x-1 text-[10px] text-slate-400 ml-5">
-                            <MapPin className="h-3 w-3 text-slate-300" />
+                            <MapPin className="h-3 w-3 text-slate-400" />
                             <span>{member.currentCity}</span>
                           </div>
                         )}

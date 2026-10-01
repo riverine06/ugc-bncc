@@ -238,7 +238,7 @@ function AdminDashboardContent({
     { id: "admissions", label: "Applications", icon: ClipboardList },
     { id: "leadership", label: "Leadership", icon: ShieldAlert },
     { id: "events", label: "Events", icon: Calendar },
-    { id: "camps", label: "Camps", icon: Tent },
+    { id: "camps", label: "Camp Registry", icon: Tent },
     { id: "notices", label: "Announcements", icon: Bell },
     { id: "achievements", label: "Achievements", icon: Award },
     { id: "gallery", label: "Gallery", icon: ImageIcon },

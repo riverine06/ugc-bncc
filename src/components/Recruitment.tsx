@@ -192,6 +192,9 @@ export default function Recruitment() {
       if (!phoneClean) {
         throw new Error("Phone contact number is strictly required.");
       }
+      if (!formData.address || !formData.address.trim()) {
+        throw new Error("Present residential address is strictly required.");
+      }
       if (!formData.photoUrl) {
         throw new Error("Official profile photograph file upload is strictly required.");
       }
@@ -312,7 +315,7 @@ export default function Recruitment() {
           <div className="space-y-4 text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-sans">
             <div>
               <strong className="text-slate-900 dark:text-slate-100 block">1. Academic Parameters:</strong>
-              <p>Must be currently enrolled in Uttara Government College (Intermediate, Degree, or Honors program).</p>
+              <p>Must be currently enrolled in Uttara Government College (Intermediate program).</p>
             </div>
             <div>
               <strong className="text-slate-900 dark:text-slate-100 block">2. Physical Heights:</strong>
@@ -450,10 +453,9 @@ export default function Recruitment() {
                     Please contact the <strong>Uttara Government College Platoon headquarters (Room 204)</strong> directly with the following physical documents:
                   </p>
                   <ul className="list-disc list-inside text-xs font-mono text-slate-600 dark:text-slate-400 pl-1 space-y-1.5">
-                    <li>Original Birth Certificate</li>
+                    <li>Photocopy of Birth Certificate</li>
                     <li>National ID Card (NID) of Parents</li>
                     <li>2 copies of passport-sized photographs</li>
-                    <li>College Admission Slip (Proof of Student Enrollment)</li>
                   </ul>
                 </div>
                 <button
@@ -817,6 +819,28 @@ export default function Recruitment() {
                     />
                   </div>
                 </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="font-mono text-slate-500 dark:text-slate-400 block font-bold">
+                      PRESENT RESIDENTIAL ADDRESS <span className="text-red-500">*</span>
+                    </label>
+                    <span className="text-[10px] font-mono text-amber-500 font-medium">
+                      (Confidential • For Platoon Admin Records Only)
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <Home className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g., Sector 10, Road 12, House 4, Uttara, Dhaka"
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded py-2 pl-9 pr-3 w-full text-slate-900 dark:text-slate-100 focus:outline-none"
+                    />
+                  </div>
+                </div>
               </motion.div>
             )}
 
@@ -922,6 +946,28 @@ export default function Recruitment() {
                 </div>
 
                 <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="font-mono text-slate-500 dark:text-slate-400 block font-bold">
+                      PRESENT RESIDENTIAL ADDRESS <span className="text-red-500">*</span>
+                    </label>
+                    <span className="text-[10px] font-mono text-amber-500 font-medium">
+                      (Confidential • For Platoon Admin Records Only)
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <Home className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g., Sector 10, Road 12, House 4, Uttara, Dhaka"
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded py-2 pl-9 pr-3 w-full text-slate-900 dark:text-slate-100 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
                   <label className="font-mono text-slate-500 dark:text-slate-400 block font-bold">
                     Past Platoon Achievements (Honors / Ranks / Roles)
                   </label>
@@ -944,7 +990,7 @@ export default function Recruitment() {
               >
                 <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
                   <span className="font-mono text-[9px] text-amber-500 dark:text-amber-400 uppercase block font-bold">
-                    // BATTALION CAMP PARTICIPATION CHECKBOXES
+                    // CAMP PARTICIPATION CHECKBOXES
                   </span>
                   <span className="font-mono text-[9px] text-slate-400 font-bold uppercase">
                     {Object.keys(selectedCamps).length} Selected
@@ -1002,7 +1048,14 @@ export default function Recruitment() {
                                 {camp.name}
                               </span>
                               <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 block">
-                                Venue: {camp.location} | Dates: {camp.startDate} to {camp.endDate}
+                                Venue: {camp.location}
+                                {camp.startDate || camp.endDate
+                                  ? ` | Dates: ${
+                                      camp.startDate && camp.endDate
+                                        ? `${camp.startDate} to ${camp.endDate}`
+                                        : camp.startDate || camp.endDate
+                                    }`
+                                  : ""}
                               </span>
                             </div>
                           </label>

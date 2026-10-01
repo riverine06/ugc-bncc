@@ -1,10 +1,12 @@
 import React from "react";
 import { 
   Check, X, Shield, Clock, FileSpreadsheet, Search, ArrowUpDown, 
-  ChevronLeft, ChevronRight, Copy, AlertTriangle, AlertCircle, XCircle 
+  ChevronLeft, ChevronRight, Copy, AlertTriangle, AlertCircle, XCircle, Trash2,
+  Download, Image as ImageIcon, ZoomIn, CheckSquare, Eye, FileText, ExternalLink, User, Mail, Phone, MapPin, Award, Tent, Calendar
 } from "lucide-react";
 import { PlatoonApplication, Member, BNCCRank, MemberStatus } from "../../types";
-import { updateDocument, createDocument, generateId } from "../../firebaseService";
+import { updateDocument, createDocument, deleteDocument, softDeleteRecord, generateId } from "../../firebaseService";
+import { auth } from "../../firebase";
 
 interface AdmissionsInboxProps {
   applications: PlatoonApplication[];
@@ -20,6 +22,7 @@ interface ToastMessage {
 interface ConfirmConfig {
   title: string;
   message: string;
+  confirmLabel?: string;
   onConfirm: () => void;
 }
 
@@ -34,6 +37,8 @@ export default function AdmissionsInbox({ applications, onRefresh }: AdmissionsI
   const [showApproveModal, setShowApproveModal] = React.useState(false);
   const [approvingApp, setApprovingApp] = React.useState<PlatoonApplication | null>(null);
   const [cadetIdInput, setCadetIdInput] = React.useState("");
+  const [previewImage, setPreviewImage] = React.useState<{ url: string; name: string } | null>(null);
+  const [detailedApp, setDetailedApp] = React.useState<PlatoonApplication | null>(null);
 
   // Filters, search, pagination, sorting, selections
   const [searchTerm, setSearchTerm] = React.useState("");
@@ -125,6 +130,7 @@ export default function AdmissionsInbox({ applications, onRefresh }: AdmissionsI
           biography: app.pastAchievements || "No biography provided.",
           status: memberStatus,
           verified: true,
+          address: app.address || "",
           currentProfession: app.currentProfession || "",
           currentOrganization: app.currentOrganization || "",
           currentCity: app.currentCity || "",
@@ -253,13 +259,78 @@ export default function AdmissionsInbox({ applications, onRefresh }: AdmissionsI
     });
   };
 
-  const exportToExcel = (filter: "All" | "Pending" | "Approved" | "Rejected") => {
-    const listToExport = filter === "All"
-      ? localApplications
-      : localApplications.filter((a) => a.status === filter);
+  const handleDelete = (appId: string, name: string) => {
+    const appToDel = localApplications.find((a) => a.id === appId);
+    setConfirmDialog({
+      title: "Delete Application Record",
+      message: `Are you sure you want to delete the admission record for "${name}" from the database? It will be moved to the Recycle Bin.`,
+      confirmLabel: "DELETE RECORD",
+      onConfirm: async () => {
+        try {
+          if (appToDel) {
+            await softDeleteRecord(
+              "applications",
+              appId,
+              `Application: ${name}`,
+              appToDel,
+              auth.currentUser?.email || "admin@ugcbncc.org",
+              auth.currentUser?.uid || "admin"
+            );
+          } else {
+            await deleteDocument("applications", appId);
+          }
+          setLocalApplications((prev) => prev.filter((a) => a.id !== appId));
+          setSelectedIds((prev) => prev.filter((id) => id !== appId));
+          showToast(`Application record for "${name}" deleted successfully.`, "success");
+          onRefresh();
+        } catch (err: any) {
+          showToast(err.message || "Failed to delete application.", "error");
+        }
+        setConfirmDialog(null);
+      }
+    });
+  };
 
+  const handleBulkDelete = () => {
+    if (selectedIds.length === 0) return;
+    setConfirmDialog({
+      title: "Bulk Delete Applications",
+      message: `Warning: You are about to delete ${selectedIds.length} application(s) from the database. They will be moved to the Recycle Bin. Proceed?`,
+      confirmLabel: `DELETE ${selectedIds.length} APPLICATIONS`,
+      onConfirm: async () => {
+        try {
+          let count = 0;
+          for (const id of selectedIds) {
+            const app = localApplications.find((a) => a.id === id);
+            if (app) {
+              await softDeleteRecord(
+                "applications",
+                id,
+                `Application: ${app.fullName}`,
+                app,
+                auth.currentUser?.email || "admin@ugcbncc.org",
+                auth.currentUser?.uid || "admin"
+              );
+            } else {
+              await deleteDocument("applications", id);
+            }
+            count++;
+          }
+          setLocalApplications((prev) => prev.filter((a) => !selectedIds.includes(a.id)));
+          showToast(`Successfully deleted ${count} application(s).`, "success");
+          setSelectedIds([]);
+          onRefresh();
+        } catch (err: any) {
+          showToast(err.message || "Failed to delete selected applications.", "error");
+        }
+        setConfirmDialog(null);
+      }
+    });
+  };
+
+  const exportApplicationsToCSV = (listToExport: PlatoonApplication[], label: string) => {
     if (listToExport.length === 0) {
-      showToast(`No applications found with status "${filter}" to export.`, "info");
+      showToast(`No applications found to export.`, "info");
       return;
     }
 
@@ -268,21 +339,24 @@ export default function AdmissionsInbox({ applications, onRefresh }: AdmissionsI
       "Full Name",
       "Email Address",
       "Phone Number",
-      "Type (Recruit/Cadet/Alumni)",
-      "Department/HSC Group",
-      "Session/Year",
+      "Applicant Type",
+      "Department / HSC Group",
+      "Session / Academic Year",
       "Joining Year",
       "Graduation Year",
+      "Assigned Cadet ID",
       "Highest Rank",
       "Current Profession",
       "Current Organization",
       "Current City",
-      "Past Achievements",
-      "Camp History",
-      "Address",
       "Blood Group",
-      "Submission Date",
-      "Status",
+      "Address",
+      "Achievements History",
+      "Camp History Summary",
+      "Registered Camps Count",
+      "Registered Camps Details",
+      "Submission Timestamp",
+      "Application Status",
     ];
 
     const escapeCSV = (val: any) => {
@@ -297,8 +371,12 @@ export default function AdmissionsInbox({ applications, onRefresh }: AdmissionsI
 
     const csvRows = [
       headers.join(","),
-      ...listToExport.map((app) =>
-        [
+      ...listToExport.map((app) => {
+        const campDetails = app.campsParticipation && app.campsParticipation.length > 0
+          ? app.campsParticipation.map((c) => `${c.campName} (${c.role}${c.achievements ? ` - Award: ${c.achievements}` : ""})`).join("; ")
+          : "";
+
+        return [
           app.id,
           app.fullName,
           app.email,
@@ -308,33 +386,101 @@ export default function AdmissionsInbox({ applications, onRefresh }: AdmissionsI
           app.session,
           app.joiningYear,
           app.graduationYear || "",
+          app.cadetId || "",
           app.highestRank || "",
           app.currentProfession || "",
           app.currentOrganization || "",
           app.currentCity || "",
+          app.bloodGroup || "",
+          app.address || "",
           app.pastAchievements || "",
           app.campHistory || "",
-          app.address || "",
-          app.bloodGroup || "",
+          app.campsParticipation ? app.campsParticipation.length : 0,
+          campDetails,
           new Date(app.submittedAt).toISOString(),
           app.status,
         ]
           .map(escapeCSV)
-          .join(",")
-      ),
+          .join(",");
+      }),
     ];
 
-    const csvContent = "\uFEFF" + csvRows.join("\n"); // UTF-8 BOM
+    const csvContent = "\uFEFF" + csvRows.join("\n"); // UTF-8 BOM for flawless Excel rendering
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `UGC_BNCC_Applications_${filter}_${new Date().toISOString().split("T")[0]}.csv`);
+    link.setAttribute("download", `UGC_BNCC_Applications_${label}_${new Date().toISOString().split("T")[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    showToast(`Successfully exported application sheet to CSV`, "success");
+    showToast(`Successfully exported ${listToExport.length} application(s) data to CSV/Excel`, "success");
+  };
+
+  const exportToExcel = (filter: "All" | "Pending" | "Approved" | "Rejected") => {
+    const listToExport = filter === "All"
+      ? localApplications
+      : localApplications.filter((a) => a.status === filter);
+    exportApplicationsToCSV(listToExport, filter);
+  };
+
+  const exportSelectedApplications = () => {
+    if (selectedIds.length === 0) {
+      showToast("Please select at least one application to export.", "info");
+      return;
+    }
+    const listToExport = localApplications.filter((a) => selectedIds.includes(a.id));
+    exportApplicationsToCSV(listToExport, `Selected_${listToExport.length}`);
+  };
+
+  const downloadApplicantImage = async (photoUrl: string, applicantName: string) => {
+    if (!photoUrl) {
+      showToast("No photo available for this applicant.", "info");
+      return;
+    }
+    try {
+      showToast("Preparing image download...", "info");
+      const res = await fetch(photoUrl);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const cleanName = applicantName.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const extension = blob.type.includes("png") ? "png" : "jpg";
+      link.download = `Applicant_${cleanName}_photo.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast("Photo downloaded successfully.", "success");
+    } catch (e) {
+      // Fallback: direct window download or open in tab
+      const link = document.createElement("a");
+      link.href = photoUrl;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.download = `Applicant_${applicantName.replace(/[^a-zA-Z0-9_-]/g, "_")}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const exportSelectedImages = async () => {
+    const appsWithPhotos = localApplications.filter(
+      (a) => selectedIds.includes(a.id) && a.photoUrl && !a.photoUrl.includes("unsplash")
+    );
+    if (appsWithPhotos.length === 0) {
+      showToast("No uploaded photos found among selected applications.", "info");
+      return;
+    }
+    showToast(`Downloading ${appsWithPhotos.length} applicant photo(s)...`, "info");
+    for (let i = 0; i < appsWithPhotos.length; i++) {
+      const app = appsWithPhotos[i];
+      await new Promise((r) => setTimeout(r, 300)); // slight pause between downloads
+      downloadApplicantImage(app.photoUrl!, app.fullName);
+    }
   };
 
   const handleToggleSelect = (id: string) => {
@@ -450,7 +596,7 @@ export default function AdmissionsInbox({ applications, onRefresh }: AdmissionsI
                 onClick={confirmDialog.onConfirm}
                 className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded text-[10px] font-bold uppercase cursor-pointer"
               >
-                REJECT APPLICATION
+                {confirmDialog.confirmLabel || "CONFIRM"}
               </button>
             </div>
           </div>
@@ -469,32 +615,74 @@ export default function AdmissionsInbox({ applications, onRefresh }: AdmissionsI
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           {selectedIds.length > 0 && (
-            <button
-              onClick={handleBulkReject}
-              className="bg-red-600 hover:bg-red-700 text-white font-mono font-bold uppercase py-1.5 px-3 rounded text-[10px] flex items-center space-x-1 cursor-pointer transition-colors"
-            >
-              <XCircle className="h-3.5 w-3.5" />
-              <span>Bulk Reject ({selectedIds.length})</span>
-            </button>
+            <>
+              <button
+                onClick={handleBulkDelete}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-mono font-bold uppercase py-1.5 px-3 rounded text-[10px] flex items-center space-x-1.5 cursor-pointer transition-colors shadow-sm"
+                title="Delete selected applications and move to Recycle Bin"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Delete ({selectedIds.length})</span>
+              </button>
+
+              <button
+                onClick={exportSelectedApplications}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-mono font-bold uppercase py-1.5 px-3 rounded text-[10px] flex items-center space-x-1.5 cursor-pointer transition-colors shadow-sm"
+                title="Export only selected applications data to Excel/CSV"
+              >
+                <CheckSquare className="h-3.5 w-3.5" />
+                <span>Export Selected Data ({selectedIds.length})</span>
+              </button>
+
+              {localApplications.some((a) => selectedIds.includes(a.id) && a.status === "Pending") && (
+                <button
+                  onClick={handleBulkReject}
+                  className="bg-slate-700 hover:bg-slate-800 text-white font-mono font-bold uppercase py-1.5 px-3 rounded text-[10px] flex items-center space-x-1 cursor-pointer transition-colors"
+                >
+                  <XCircle className="h-3.5 w-3.5" />
+                  <span>Bulk Reject</span>
+                </button>
+              )}
+            </>
           )}
-          <button
-            onClick={() => exportToExcel("All")}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-mono font-bold uppercase py-1.5 px-3 rounded text-[10px] flex items-center space-x-1.5 cursor-pointer transition-colors"
-            title="Export all applications to Excel/CSV"
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5" />
-            <span>Export All (Excel)</span>
-          </button>
-          <button
-            onClick={() => exportToExcel("Pending")}
-            className="bg-amber-600 hover:bg-amber-700 text-white font-mono font-bold uppercase py-1.5 px-3 rounded text-[10px] flex items-center space-x-1.5 cursor-pointer transition-colors"
-            title="Export pending applications to Excel/CSV"
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5" />
-            <span>Pending Only</span>
-          </button>
+
+          {/* Export Menu Dropdown / Buttons */}
+          <div className="flex items-center space-x-1.5 bg-slate-50 dark:bg-slate-850 p-1 rounded-lg border border-slate-200 dark:border-slate-800">
+            <span className="font-mono text-slate-400 text-[9px] uppercase pl-1.5 flex items-center space-x-1">
+              <Download className="h-3 w-3" />
+              <span>Export:</span>
+            </span>
+            <button
+              onClick={() => exportToExcel("All")}
+              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-mono font-bold uppercase rounded text-[9px] cursor-pointer transition-colors"
+              title="Export all applications to Excel/CSV"
+            >
+              All
+            </button>
+            <button
+              onClick={() => exportToExcel("Approved")}
+              className="px-2 py-1 bg-teal-600 hover:bg-teal-700 text-white font-mono font-bold uppercase rounded text-[9px] cursor-pointer transition-colors"
+              title="Export approved/enlisted applications to Excel/CSV"
+            >
+              Approved
+            </button>
+            <button
+              onClick={() => exportToExcel("Pending")}
+              className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white font-mono font-bold uppercase rounded text-[9px] cursor-pointer transition-colors"
+              title="Export pending applications to Excel/CSV"
+            >
+              Pending
+            </button>
+            <button
+              onClick={() => exportToExcel("Rejected")}
+              className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white font-mono font-bold uppercase rounded text-[9px] cursor-pointer transition-colors"
+              title="Export rejected applications to Excel/CSV"
+            >
+              Rejected
+            </button>
+          </div>
         </div>
       </div>
 
@@ -645,20 +833,34 @@ export default function AdmissionsInbox({ applications, onRefresh }: AdmissionsI
                         className="rounded border-slate-300 dark:border-slate-700 text-amber-500 focus:ring-amber-500 h-3.5 w-3.5 cursor-pointer"
                       />
                       {app.photoUrl && !app.photoUrl.includes("unsplash") ? (
-                        <img
-                          src={app.photoUrl}
-                          alt={app.fullName}
-                          className="w-10 h-10 rounded-full object-cover border border-slate-200"
-                          referrerPolicy="no-referrer"
-                        />
+                        <div 
+                          className="relative group cursor-pointer shrink-0"
+                          onClick={() => setPreviewImage({ url: app.photoUrl!, name: app.fullName })}
+                          title="Click to view full applicant photo"
+                        >
+                          <img
+                            src={app.photoUrl}
+                            alt={app.fullName}
+                            className="w-11 h-11 rounded-full object-cover border-2 border-slate-200 dark:border-slate-700 group-hover:border-amber-500 transition-all shadow-sm"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                            <ZoomIn className="h-4 w-4" />
+                          </div>
+                        </div>
                       ) : (
-                        <div className="w-10 h-10 rounded-full bg-army-900 border border-amber-500/40 text-amber-400 font-bold text-xs flex items-center justify-center shrink-0">
+                        <div className="w-11 h-11 rounded-full bg-army-900 border border-amber-500/40 text-amber-400 font-bold text-xs flex items-center justify-center shrink-0">
                           {app.fullName ? app.fullName.charAt(0) : "C"}
                         </div>
                       )}
-                      <div>
-                        <h4 className="font-display font-bold text-slate-900 dark:text-white text-sm leading-tight">
-                          {app.fullName}
+                      <div 
+                        className="cursor-pointer group/title"
+                        onClick={() => setDetailedApp(app)}
+                        title="Click to view complete dossier"
+                      >
+                        <h4 className="font-display font-bold text-slate-900 dark:text-white text-sm leading-tight group-hover/title:text-amber-500 transition-colors flex items-center space-x-1">
+                          <span>{app.fullName}</span>
+                          <ExternalLink className="h-3 w-3 opacity-0 group-hover/title:opacity-100 text-amber-500 transition-opacity" />
                         </h4>
                         <span className="inline-block bg-amber-500/10 text-amber-500 font-mono text-[9px] px-1.5 py-0.5 rounded uppercase font-bold">
                           {app.type}
@@ -672,74 +874,119 @@ export default function AdmissionsInbox({ applications, onRefresh }: AdmissionsI
                     </div>
                   </div>
 
-                  {/* Grid details */}
-                  <div className="grid grid-cols-2 gap-3 text-[11px] bg-slate-50 dark:bg-slate-850 p-3 rounded-lg border border-slate-100 dark:border-slate-800">
-                    <div>
-                      <span className="text-slate-400 block text-[9px] uppercase font-mono">Email</span>
-                      <span className="text-slate-700 dark:text-slate-200 break-all">{app.email}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[9px] uppercase font-mono">Phone</span>
-                      <span className="text-slate-700 dark:text-slate-200">{app.phone}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[9px] uppercase font-mono">HSC Group</span>
-                      <span className="text-slate-700 dark:text-slate-200">{app.department}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[9px] uppercase font-mono">Session / Year</span>
-                      <span className="text-slate-700 dark:text-slate-200">{app.session}</span>
-                    </div>
-                    {app.bloodGroup && (
+                  {/* Clickable Card Body for Detailed Information */}
+                  <div 
+                    onClick={() => setDetailedApp(app)}
+                    className="cursor-pointer group/card space-y-3"
+                    title="Click to view full application dossier details"
+                  >
+                    {/* Grid details */}
+                    <div className="grid grid-cols-2 gap-3 text-[11px] bg-slate-50 dark:bg-slate-850 p-3 rounded-lg border border-slate-100 dark:border-slate-800 group-hover/card:border-amber-500/40 transition-colors">
                       <div>
-                        <span className="text-slate-400 block text-[9px] uppercase font-mono">Blood Group</span>
-                        <span className="text-slate-700 dark:text-slate-200 font-bold">{app.bloodGroup}</span>
+                        <span className="text-slate-400 block text-[9px] uppercase font-mono">Email</span>
+                        <span className="text-slate-700 dark:text-slate-200 break-all">{app.email}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[9px] uppercase font-mono">Phone</span>
+                        <span className="text-slate-700 dark:text-slate-200">{app.phone}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[9px] uppercase font-mono">HSC Group</span>
+                        <span className="text-slate-700 dark:text-slate-200">{app.department}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[9px] uppercase font-mono">Session / Year</span>
+                        <span className="text-slate-700 dark:text-slate-200">{app.session}</span>
+                      </div>
+                      {app.bloodGroup && (
+                        <div>
+                          <span className="text-slate-400 block text-[9px] uppercase font-mono">Blood Group</span>
+                          <span className="text-slate-700 dark:text-slate-200 font-bold">{app.bloodGroup}</span>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-slate-400 block text-[9px] uppercase font-mono">Status</span>
+                        <span className={`font-mono text-[10px] font-bold uppercase ${
+                          app.status === "Pending" 
+                            ? "text-amber-500" 
+                            : app.status === "Approved" 
+                            ? "text-emerald-500" 
+                            : "text-rose-500"
+                        }`}>{app.status}</span>
+                      </div>
+                      {app.address && (
+                        <div className="col-span-2 pt-1.5 border-t border-slate-200/60 dark:border-slate-800/80">
+                          <span className="text-slate-400 block text-[9px] uppercase font-mono">Present Address (Confidential)</span>
+                          <span className="text-slate-700 dark:text-slate-200 font-sans line-clamp-1 text-[11px]" title={app.address}>{app.address}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Achievements history */}
+                    {app.pastAchievements && (
+                      <div className="text-[11px] bg-amber-500/5 border border-amber-500/10 p-2.5 rounded text-slate-600 dark:text-slate-300">
+                        <strong className="text-[9px] uppercase font-mono text-amber-500 block">Achievements History:</strong>
+                        <p className="mt-0.5 line-clamp-2">{app.pastAchievements}</p>
                       </div>
                     )}
-                    <div>
-                      <span className="text-slate-400 block text-[9px] uppercase font-mono">Status Status</span>
-                      <span className={`font-mono text-[10px] font-bold uppercase ${
-                        app.status === "Pending" 
-                          ? "text-amber-500" 
-                          : app.status === "Approved" 
-                          ? "text-emerald-500" 
-                          : "text-rose-500"
-                      }`}>{app.status}</span>
+
+                    {/* Registered Camp Participations */}
+                    {app.campsParticipation && app.campsParticipation.length > 0 && (
+                      <div className="text-[11px] bg-emerald-500/5 border border-emerald-500/10 p-2.5 rounded text-slate-600 dark:text-slate-300 space-y-1">
+                        <strong className="text-[9px] uppercase font-mono text-emerald-500 block">Registered Camp Participations ({app.campsParticipation.length}):</strong>
+                        <ul className="space-y-1">
+                          {app.campsParticipation.slice(0, 2).map((cp, idx) => (
+                            <li key={idx} className="text-[10px] font-mono leading-tight truncate">
+                              • <span className="font-bold text-slate-800 dark:text-slate-200">{cp.campName}</span> ({cp.role})
+                            </li>
+                          ))}
+                          {app.campsParticipation.length > 2 && (
+                            <li className="text-[9px] font-mono text-emerald-500 font-bold">
+                              + {app.campsParticipation.length - 2} more camps (click to view all)
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                    <div className="text-[9.5px] font-mono text-amber-500/80 group-hover/card:text-amber-500 flex items-center justify-end space-x-1 pt-0.5">
+                      <Eye className="h-3 w-3" />
+                      <span>Click card to view complete dossier ➔</span>
                     </div>
                   </div>
-
-                  {/* Achievements history */}
-                  {app.pastAchievements && (
-                    <div className="text-[11px] bg-amber-500/5 border border-amber-500/10 p-2.5 rounded text-slate-600 dark:text-slate-300">
-                      <strong className="text-[9px] uppercase font-mono text-amber-500 block">Achievements History:</strong>
-                      <p className="mt-0.5 line-clamp-3">{app.pastAchievements}</p>
-                    </div>
-                  )}
-
-                  {/* Registered Camp Participations */}
-                  {app.campsParticipation && app.campsParticipation.length > 0 && (
-                    <div className="text-[11px] bg-emerald-500/5 border border-emerald-500/10 p-2.5 rounded text-slate-600 dark:text-slate-300 space-y-1">
-                      <strong className="text-[9px] uppercase font-mono text-emerald-500 block">Registered Camp Participations ({app.campsParticipation.length}):</strong>
-                      <ul className="space-y-1">
-                        {app.campsParticipation.map((cp, idx) => (
-                          <li key={idx} className="text-[10px] font-mono leading-tight">
-                            • <span className="font-bold text-slate-800 dark:text-slate-200">{cp.campName}</span> — Role: <span className="text-amber-600 dark:text-amber-400 font-bold">{cp.role}</span>
-                            {cp.achievements && <span className="text-emerald-600 dark:text-emerald-400 block pl-3">★ Award: {cp.achievements}</span>}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                 </div>
 
                 {/* Individual Action buttons */}
                 <div className="flex space-x-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                   <button
+                    onClick={() => setDetailedApp(app)}
+                    className="p-2 bg-amber-500/10 hover:bg-amber-500 hover:text-slate-950 text-amber-500 border border-amber-500/30 rounded transition-colors cursor-pointer"
+                    title="View Full Detailed Dossier"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                  </button>
+                  <button
                     onClick={() => handleDuplicate(app)}
-                    className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-500 dark:text-slate-400 rounded transition-colors"
+                    className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-500 dark:text-slate-400 rounded transition-colors cursor-pointer"
                     title="Duplicate application"
                   >
                     <Copy className="h-3.5 w-3.5" />
+                  </button>
+                  {app.photoUrl && !app.photoUrl.includes("unsplash") && (
+                    <button
+                      onClick={() => downloadApplicantImage(app.photoUrl!, app.fullName)}
+                      className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-indigo-600 hover:text-white text-slate-500 dark:text-slate-400 rounded transition-colors cursor-pointer"
+                      title="Download applicant photo"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleDelete(app.id, app.fullName)}
+                    className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-rose-600 hover:text-white text-slate-500 dark:text-slate-400 rounded transition-colors cursor-pointer"
+                    title="Delete application record from database"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                   {app.status === "Pending" && (
                     <>
@@ -762,6 +1009,32 @@ export default function AdmissionsInbox({ applications, onRefresh }: AdmissionsI
                         <span>REJECT</span>
                       </button>
                     </>
+                  )}
+                  {app.status === "Rejected" && (
+                    <button
+                      onClick={() => handleDelete(app.id, app.fullName)}
+                      className="flex-1 bg-rose-600/90 hover:bg-rose-700 text-white font-mono font-bold uppercase py-1.5 rounded text-[10px] flex items-center justify-center space-x-1.5 cursor-pointer transition-colors shadow-sm"
+                      title="Permanently remove rejected application from database"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>DELETE REJECTED RECORD</span>
+                    </button>
+                  )}
+                  {app.status === "Approved" && (
+                    <div className="flex-1 flex items-center justify-between pl-1">
+                      <span className="text-[10px] font-mono text-emerald-500 font-bold flex items-center space-x-1">
+                        <Check className="h-3.5 w-3.5" />
+                        <span>ENLISTED</span>
+                      </span>
+                      <button
+                        onClick={() => handleDelete(app.id, app.fullName)}
+                        className="px-2 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-rose-600 hover:text-white text-slate-400 font-mono text-[9px] rounded border border-slate-200 dark:border-slate-700 cursor-pointer flex items-center space-x-1 transition-colors"
+                        title="Delete archived application file"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        <span>DELETE</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -884,6 +1157,356 @@ export default function AdmissionsInbox({ applications, onRefresh }: AdmissionsI
               >
                 Approve & Transmit
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Full Image Preview Modal */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-4">
+              <div>
+                <h4 className="font-display font-bold text-slate-900 dark:text-white text-sm">
+                  {previewImage.name}
+                </h4>
+                <p className="text-[10px] font-mono text-slate-400">Official Applicant Photograph</p>
+              </div>
+              <button
+                onClick={() => setPreviewImage(null)}
+                className="p-1 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer transition-colors"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="px-5 py-2 flex items-center justify-center bg-slate-950/5 dark:bg-slate-950/40 rounded-lg mx-5 border border-slate-100 dark:border-slate-800/80">
+              <img
+                src={previewImage.url}
+                alt={previewImage.name}
+                className="max-h-[60vh] max-w-full rounded-lg object-contain shadow-md"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+
+            <div className="flex items-center justify-between px-5 pb-4 pt-1">
+              <a
+                href={previewImage.url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] font-mono text-amber-500 hover:underline flex items-center space-x-1"
+              >
+                <span>Open original in new tab</span>
+              </a>
+              <button
+                onClick={() => downloadApplicantImage(previewImage.url, previewImage.name)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-mono font-bold uppercase py-1.5 px-4 rounded text-[10px] flex items-center space-x-1.5 cursor-pointer transition-colors shadow-sm"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>Download Photo</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Detailed Dossier Modal */}
+      {detailedApp && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
+          onClick={() => setDetailedApp(null)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 text-white border-b border-slate-800 flex items-center justify-between shrink-0">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-display font-black text-sm uppercase tracking-wider text-white">
+                    Applicant Dossier Ledger
+                  </h3>
+                  <p className="text-[10px] font-mono text-slate-400">
+                    ID: {detailedApp.id} • Submitted: {new Date(detailedApp.submittedAt).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDetailedApp(null)}
+                className="p-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer transition-colors"
+                title="Close Dossier"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div className="p-6 overflow-y-auto space-y-6">
+              {/* Profile Top Summary */}
+              <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800">
+                {detailedApp.photoUrl && !detailedApp.photoUrl.includes("unsplash") ? (
+                  <div 
+                    className="relative group cursor-pointer shrink-0"
+                    onClick={() => setPreviewImage({ url: detailedApp.photoUrl!, name: detailedApp.fullName })}
+                    title="Click to view high-resolution image"
+                  >
+                    <img
+                      src={detailedApp.photoUrl}
+                      alt={detailedApp.fullName}
+                      className="w-20 h-20 rounded-xl object-cover border-2 border-amber-500 shadow-md"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                      <ZoomIn className="h-5 w-5" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-20 h-20 rounded-xl bg-army-900 border-2 border-amber-500 text-amber-400 font-bold text-2xl flex items-center justify-center shrink-0 shadow-md">
+                    {detailedApp.fullName ? detailedApp.fullName.charAt(0) : "C"}
+                  </div>
+                )}
+
+                <div className="space-y-1.5 flex-1 text-center sm:text-left">
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                    <h2 className="font-display font-black text-slate-900 dark:text-white text-lg">
+                      {detailedApp.fullName}
+                    </h2>
+                    <span className="bg-amber-500/10 text-amber-500 font-mono text-[10px] px-2 py-0.5 rounded uppercase font-bold border border-amber-500/20">
+                      {detailedApp.type}
+                    </span>
+                    <span className={`font-mono text-[10px] px-2 py-0.5 rounded uppercase font-bold ${
+                      detailedApp.status === "Pending" 
+                        ? "bg-amber-500/10 text-amber-500 border border-amber-500/20" 
+                        : detailedApp.status === "Approved" 
+                        ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" 
+                        : "bg-rose-500/10 text-rose-500 border border-rose-500/20"
+                    }`}>
+                      {detailedApp.status}
+                    </span>
+                  </div>
+
+                  {detailedApp.cadetId && (
+                    <p className="font-mono text-xs font-bold text-amber-500">
+                      Cadet ID: {detailedApp.cadetId}
+                    </p>
+                  )}
+
+                  <p className="text-slate-500 dark:text-slate-400 text-xs">
+                    {detailedApp.department} • Session {detailedApp.session} • Joining Year: {detailedApp.joiningYear}
+                  </p>
+                </div>
+
+                {detailedApp.photoUrl && !detailedApp.photoUrl.includes("unsplash") && (
+                  <button
+                    onClick={() => downloadApplicantImage(detailedApp.photoUrl!, detailedApp.fullName)}
+                    className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-mono font-bold flex items-center space-x-1.5 transition-colors cursor-pointer"
+                    title="Download Photo"
+                  >
+                    <Download className="h-4 w-4 text-emerald-500" />
+                    <span>Download Photo</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Contact & Personal Information */}
+              <div>
+                <h4 className="font-mono text-[11px] uppercase font-bold text-slate-400 tracking-wider mb-2 flex items-center space-x-1.5">
+                  <User className="h-3.5 w-3.5 text-amber-500" />
+                  <span>Contact & Demographic Details</span>
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-slate-50 dark:bg-slate-850 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <div>
+                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Email Address</span>
+                    <a href={`mailto:${detailedApp.email}`} className="text-amber-600 dark:text-amber-400 hover:underline font-medium break-all">
+                      {detailedApp.email}
+                    </a>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Phone Number</span>
+                    <a href={`tel:${detailedApp.phone}`} className="text-slate-800 dark:text-slate-200 font-mono font-medium">
+                      {detailedApp.phone}
+                    </a>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Blood Group</span>
+                    <span className="text-rose-600 dark:text-rose-400 font-bold font-mono">
+                      {detailedApp.bloodGroup || "Not specified"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Current City / Location</span>
+                    <span className="text-slate-800 dark:text-slate-200">
+                      {detailedApp.currentCity || "Not provided"}
+                    </span>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Full Residential Address</span>
+                    <span className="text-slate-800 dark:text-slate-200">
+                      {detailedApp.address || "Not provided"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Academic & Service Credentials */}
+              <div>
+                <h4 className="font-mono text-[11px] uppercase font-bold text-slate-400 tracking-wider mb-2 flex items-center space-x-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-amber-500" />
+                  <span>Academic & Cadet Credentials</span>
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-slate-50 dark:bg-slate-850 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <div>
+                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Department / Group</span>
+                    <span className="text-slate-800 dark:text-slate-200 font-semibold">{detailedApp.department}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Academic Session</span>
+                    <span className="text-slate-800 dark:text-slate-200 font-mono">{detailedApp.session}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Joining Year</span>
+                    <span className="text-slate-800 dark:text-slate-200 font-mono">{detailedApp.joiningYear}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-mono text-slate-400 uppercase block">Graduation Year</span>
+                    <span className="text-slate-800 dark:text-slate-200 font-mono">{detailedApp.graduationYear || "Ongoing / N/A"}</span>
+                  </div>
+                  {detailedApp.highestRank && (
+                    <div>
+                      <span className="text-[10px] font-mono text-slate-400 uppercase block">Highest BNCC Rank</span>
+                      <span className="text-amber-600 dark:text-amber-400 font-bold font-mono">{detailedApp.highestRank}</span>
+                    </div>
+                  )}
+                  {detailedApp.currentProfession && (
+                    <div>
+                      <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block">Current Designation / Role</span>
+                      <span className="text-slate-900 dark:text-slate-100 font-semibold">{detailedApp.currentProfession}</span>
+                    </div>
+                  )}
+                  {detailedApp.currentOrganization && (
+                    <div className="sm:col-span-2">
+                      <span className="text-[10px] font-mono text-slate-400 uppercase font-bold block">Company / Organization Name</span>
+                      <span className="text-amber-600 dark:text-amber-400 font-bold">{detailedApp.currentOrganization}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Achievements History */}
+              {detailedApp.pastAchievements && (
+                <div>
+                  <h4 className="font-mono text-[11px] uppercase font-bold text-slate-400 tracking-wider mb-2 flex items-center space-x-1.5">
+                    <Award className="h-3.5 w-3.5 text-amber-500" />
+                    <span>Past Achievements & Military Distinctions</span>
+                  </h4>
+                  <div className="text-xs bg-amber-500/5 p-4 rounded-xl border border-amber-500/20 text-slate-800 dark:text-slate-200 whitespace-pre-line leading-relaxed">
+                    {detailedApp.pastAchievements}
+                  </div>
+                </div>
+              )}
+
+              {/* Camp History Summary */}
+              {detailedApp.campHistory && (
+                <div>
+                  <h4 className="font-mono text-[11px] uppercase font-bold text-slate-400 tracking-wider mb-2 flex items-center space-x-1.5">
+                    <Tent className="h-3.5 w-3.5 text-emerald-500" />
+                    <span>Historical Camp Summary</span>
+                  </h4>
+                  <div className="text-xs bg-slate-50 dark:bg-slate-850 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 whitespace-pre-line leading-relaxed">
+                    {detailedApp.campHistory}
+                  </div>
+                </div>
+              )}
+
+              {/* Structured Registered Camp Participations */}
+              {detailedApp.campsParticipation && detailedApp.campsParticipation.length > 0 && (
+                <div>
+                  <h4 className="font-mono text-[11px] uppercase font-bold text-slate-400 tracking-wider mb-2 flex items-center space-x-1.5">
+                    <Tent className="h-3.5 w-3.5 text-emerald-500" />
+                    <span>Verified Registered Camps ({detailedApp.campsParticipation.length})</span>
+                  </h4>
+                  <div className="space-y-2">
+                    {detailedApp.campsParticipation.map((cp, idx) => (
+                      <div key={idx} className="p-3 bg-emerald-500/5 rounded-xl border border-emerald-500/20 text-xs flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-slate-900 dark:text-white block">{cp.campName}</span>
+                          <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                            Role: <span className="text-amber-600 dark:text-amber-400 font-bold">{cp.role}</span>
+                          </span>
+                        </div>
+                        {cp.achievements && (
+                          <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2 py-1 rounded">
+                            ★ {cp.achievements}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer with Actions */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-850 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
+              <button
+                onClick={() => setDetailedApp(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-mono font-bold uppercase transition-colors cursor-pointer"
+              >
+                Close Dossier
+              </button>
+
+              <div className="flex items-center space-x-2">
+                {detailedApp.status === "Pending" && (
+                  <>
+                    <button
+                      onClick={() => {
+                        const target = detailedApp;
+                        setDetailedApp(null);
+                        setApprovingApp(target);
+                        setCadetIdInput(target.cadetId || "");
+                        setShowApproveModal(true);
+                      }}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-mono font-bold uppercase transition-colors cursor-pointer flex items-center space-x-1.5 shadow-sm"
+                    >
+                      <Check className="h-4 w-4" />
+                      <span>Approve & Enlist</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        const target = detailedApp;
+                        setDetailedApp(null);
+                        handleReject(target.id, target.fullName);
+                      }}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-mono font-bold uppercase transition-colors cursor-pointer flex items-center space-x-1.5 shadow-sm"
+                    >
+                      <X className="h-4 w-4" />
+                      <span>Reject</span>
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => {
+                    const target = detailedApp;
+                    setDetailedApp(null);
+                    handleDelete(target.id, target.fullName);
+                  }}
+                  className="px-3 py-2 bg-rose-600/10 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-500/30 rounded-lg text-xs font-mono font-bold uppercase transition-colors cursor-pointer flex items-center space-x-1"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Delete Record</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -3,11 +3,21 @@ import {
   Plus, Search, Check, UserPlus, Edit, Trash2, ArrowUpCircle, 
   ArrowUpDown, Download, Upload, Trash, ShieldCheck, RefreshCw,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSpreadsheet,
-  Info, Sparkles, Eye, EyeOff, Copy, AlertTriangle, X 
+  Info, Sparkles, Eye, EyeOff, Copy, AlertTriangle, X,
+  Award, History, UserCheck, Shield, Briefcase, Building2, Home
 } from "lucide-react";
 import { Member, BNCCRank, MemberStatus } from "../../types";
 import { createDocument, updateDocument, deleteDocument, softDeleteRecord, generateId } from "../../firebaseService";
 import { auth } from "../../firebase";
+
+const CADET_RANKS: BNCCRank[] = [
+  BNCCRank.RECRUIT,
+  BNCCRank.CADET,
+  BNCCRank.LANCE_CORPORAL,
+  BNCCRank.CORPORAL,
+  BNCCRank.SERGEANT,
+  BNCCRank.CADET_UNDER_OFFICER,
+];
 
 interface MembersManagerProps {
   members: Member[];
@@ -69,6 +79,7 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
     department: "",
     session: "",
     joiningYear: new Date().getFullYear().toString(),
+    graduationYear: "",
     bloodGroup: "O+",
     phone: "",
     email: "",
@@ -77,6 +88,32 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
     cadetIdImage: "",
     hideContactInfo: false,
     isArmyStaff: false,
+    servicePeriod: "",
+    currentProfession: "",
+    currentOrganization: "",
+    currentCity: "",
+    address: "",
+  });
+
+  // PUO Specific Management State
+  const [showAssignPUOModal, setShowAssignPUOModal] = React.useState(false);
+  const [puoTenureModal, setPuoTenureModal] = React.useState<Member | null>(null);
+  const [puoServicePeriodInput, setPuoServicePeriodInput] = React.useState("");
+
+  const currentYear = new Date().getFullYear();
+  const [newPuoForm, setNewPuoForm] = React.useState({
+    fullName: "",
+    department: "",
+    session: `${currentYear}-${currentYear + 1}`,
+    appointmentYear: currentYear.toString(),
+    servicePeriod: `${currentYear} - Present`,
+    phone: "",
+    email: "",
+    bloodGroup: "A+",
+    photoUrl: "",
+    biography: "",
+    transitionPreviousActivePUO: true,
+    previousPUOEndYear: currentYear.toString(),
   });
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -91,6 +128,7 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
       department: member.department || "",
       session: member.session || "",
       joiningYear: String(member.joiningYear || new Date().getFullYear()),
+      graduationYear: member.graduationYear ? String(member.graduationYear) : "",
       bloodGroup: member.bloodGroup || "O+",
       phone: member.phone || "",
       email: member.email || "",
@@ -99,9 +137,19 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
       cadetIdImage: member.cadetIdImage || "",
       hideContactInfo: !!member.hideContactInfo,
       isArmyStaff: !!member.isArmyStaff,
+      servicePeriod: member.servicePeriod || "",
+      currentProfession: member.currentProfession || "",
+      currentOrganization: member.currentOrganization || "",
+      currentCity: member.currentCity || "",
+      address: member.address || "",
     });
     setShowAddForm(true);
-    showToast("Loaded cadet profile for modification", "info");
+    showToast(
+      member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER
+        ? "Loaded PUO officer profile for modification"
+        : "Loaded cadet profile for modification", 
+      "info"
+    );
   };
 
   const handleDuplicate = (member: Member) => {
@@ -114,6 +162,7 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
       department: member.department || "",
       session: member.session || "",
       joiningYear: String(member.joiningYear || new Date().getFullYear()),
+      graduationYear: member.graduationYear ? String(member.graduationYear) : "",
       bloodGroup: member.bloodGroup || "O+",
       phone: member.phone || "",
       email: member.email || "",
@@ -122,6 +171,11 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
       cadetIdImage: member.cadetIdImage || "",
       hideContactInfo: !!member.hideContactInfo,
       isArmyStaff: !!member.isArmyStaff,
+      servicePeriod: member.servicePeriod || "",
+      currentProfession: member.currentProfession || "",
+      currentOrganization: member.currentOrganization || "",
+      currentCity: member.currentCity || "",
+      address: member.address || "",
     });
     setShowAddForm(true);
     showToast("Replicated cadet parameters into registration form", "success");
@@ -137,6 +191,7 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
       department: "",
       session: "",
       joiningYear: new Date().getFullYear().toString(),
+      graduationYear: "",
       bloodGroup: "O+",
       phone: "",
       email: "",
@@ -145,6 +200,11 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
       cadetIdImage: "",
       hideContactInfo: false,
       isArmyStaff: false,
+      servicePeriod: "",
+      currentProfession: "",
+      currentOrganization: "",
+      currentCity: "",
+      address: "",
     });
   };
 
@@ -153,8 +213,13 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
     setIsSubmitting(true);
     
     try {
-      const targetId = form.id.trim();
-      if (!targetId) {
+      const isPUOEdit = editingMember && (
+        editingMember.rank === BNCCRank.PLATOON_UNDER_OFFICER || 
+        editingMember.status === MemberStatus.PLATOON_OFFICER || 
+        editingMember.status === MemberStatus.FORMER_PUO
+      );
+      const targetId = isPUOEdit ? (editingMember.id || generateId("puo")) : form.id.trim();
+      if (!isPUOEdit && !targetId) {
         throw new Error("Cadet ID is strictly required and cannot be left blank.");
       }
 
@@ -206,6 +271,8 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
             ...form,
             id: targetId,
             joiningYear: Number(form.joiningYear),
+            graduationYear: form.graduationYear ? Number(form.graduationYear) : null,
+            address: form.address ? form.address.trim() : "",
           };
           await createDocument("cadets", docData, targetId);
           await deleteDocument("cadets", editingMember.id);
@@ -214,6 +281,8 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
           await updateDocument("cadets", editingMember.id, {
             ...form,
             joiningYear: Number(form.joiningYear),
+            graduationYear: form.graduationYear ? Number(form.graduationYear) : null,
+            address: form.address ? form.address.trim() : "",
           });
         }
         showToast("Cadet profile successfully updated!", "success");
@@ -232,6 +301,8 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
           ...form,
           id: targetId,
           joiningYear: Number(form.joiningYear),
+          graduationYear: form.graduationYear ? Number(form.graduationYear) : null,
+          address: form.address ? form.address.trim() : "",
         }, targetId);
         showToast("Member profile successfully created and cataloged!", "success");
       }
@@ -251,15 +322,21 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
       case BNCCRank.LANCE_CORPORAL: return BNCCRank.CORPORAL;
       case BNCCRank.CORPORAL: return BNCCRank.SERGEANT;
       case BNCCRank.SERGEANT: return BNCCRank.CADET_UNDER_OFFICER;
-      case BNCCRank.CADET_UNDER_OFFICER: return BNCCRank.PLATOON_UNDER_OFFICER;
+      case BNCCRank.CADET_UNDER_OFFICER: return BNCCRank.CADET_UNDER_OFFICER; // Highest cadet rank (CUO)
+      case BNCCRank.PLATOON_UNDER_OFFICER: return BNCCRank.PLATOON_UNDER_OFFICER; // PUO is not a cadet; only PUO rank
       default: return rank;
     }
   };
 
   const handlePromoteRank = (memberId: string, currentRank: BNCCRank) => {
+    if (currentRank === BNCCRank.PLATOON_UNDER_OFFICER) {
+      showToast("PUO is a permanent faculty officer appointment and cannot be promoted through cadet ranks.", "info");
+      return;
+    }
+
     const newRank = getNextRank(currentRank);
     if (newRank === currentRank) {
-      showToast("This cadet is already at the highest platoon rank!", "info");
+      showToast("This cadet is already at the highest cadet rank (Cadet Under Officer - CUO)!", "info");
       return;
     }
     
@@ -279,18 +356,209 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
     });
   };
 
-  const handleToggleStatus = async (memberId: string, currentStatus: MemberStatus) => {
-    let nextStatus = MemberStatus.ACTIVE_CADET;
-    if (currentStatus === MemberStatus.ACTIVE_CADET) {
-      nextStatus = MemberStatus.PLATOON_OFFICER;
-    } else if (currentStatus === MemberStatus.PLATOON_OFFICER) {
-      nextStatus = MemberStatus.ALUMNI;
-    } else {
-      nextStatus = MemberStatus.ACTIVE_CADET;
+  const handleOpenPUOTenureModal = (puo: Member) => {
+    setPuoTenureModal(puo);
+    setPuoServicePeriodInput(
+      puo.servicePeriod || 
+      `${puo.joiningYear || 2018} - ${puo.status === MemberStatus.FORMER_PUO ? currentYear : "Present"}`
+    );
+  };
+
+  const handleUpdatePUOTenure = async (newStatus: MemberStatus) => {
+    if (!puoTenureModal) return;
+    try {
+      const period = puoServicePeriodInput.trim() || `${puoTenureModal.joiningYear || 2018} - ${currentYear}`;
+      await updateDocument("cadets", puoTenureModal.id, {
+        status: newStatus,
+        servicePeriod: period,
+      });
+
+      // Synchronize with former_puos collection for public roll of honor
+      try {
+        const formerPuoStatus: "Active" | "Former" = newStatus === MemberStatus.PLATOON_OFFICER ? "Active" : "Former";
+        await createDocument("former_puos", {
+          id: puoTenureModal.id,
+          name: puoTenureModal.fullName,
+          department: puoTenureModal.department || "Faculty",
+          session: puoTenureModal.session || `${puoTenureModal.joiningYear}-${(puoTenureModal.joiningYear || 2024) + 1}`,
+          servicePeriod: period,
+          photo: puoTenureModal.photoUrl || "",
+          status: formerPuoStatus,
+        }, puoTenureModal.id);
+      } catch (err) {
+        console.warn("Could not sync with former_puos collection:", err);
+      }
+
+      showToast(
+        newStatus === MemberStatus.FORMER_PUO
+          ? `Officer "${puoTenureModal.fullName}" concluded service and marked as Former PUO (Tenure: ${period}).`
+          : `Officer "${puoTenureModal.fullName}" reinstated as Active PUO.`,
+        "success"
+      );
+      setPuoTenureModal(null);
+      onRefresh();
+    } catch (err: any) {
+      showToast(err.message, "error");
     }
+  };
+
+  const handleAssignPUO = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPuoForm.fullName.trim() || !newPuoForm.department.trim()) {
+      showToast("Please provide the Officer's Full Name and Academic Department/Designation.", "error");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const puoId = generateId("puo");
+      
+      // If transitionPreviousActivePUO is enabled, transition any existing active PUO to Former PUO
+      if (newPuoForm.transitionPreviousActivePUO) {
+        const activePUOs = members.filter(
+          (m) => (m.status === MemberStatus.PLATOON_OFFICER || m.rank === BNCCRank.PLATOON_UNDER_OFFICER) && m.id !== puoId
+        );
+        for (const prevPuo of activePUOs) {
+          const endPeriod = `${prevPuo.joiningYear || 2018} - ${newPuoForm.previousPUOEndYear || currentYear}`;
+          await updateDocument("cadets", prevPuo.id, {
+            status: MemberStatus.FORMER_PUO,
+            servicePeriod: endPeriod,
+          });
+
+          // Sync to former_puos collection
+          try {
+            await createDocument("former_puos", {
+              id: prevPuo.id,
+              name: prevPuo.fullName,
+              photo: prevPuo.photoUrl || "",
+              department: prevPuo.department || "Faculty",
+              session: prevPuo.session || `${prevPuo.joiningYear}-${(prevPuo.joiningYear || 2024) + 1}`,
+              servicePeriod: endPeriod,
+              status: "Former",
+            }, prevPuo.id);
+          } catch (err) {
+            console.warn("Could not sync former PUO:", err);
+          }
+        }
+      }
+
+      // Check if this PUO already exists in cadets collection
+      const existing = members.find((m) => m.id === puoId);
+      const puoPayload: any = {
+        id: puoId,
+        fullName: newPuoForm.fullName.trim(),
+        rank: BNCCRank.PLATOON_UNDER_OFFICER,
+        department: newPuoForm.department.trim(),
+        session: newPuoForm.session.trim() || `${newPuoForm.appointmentYear}-${Number(newPuoForm.appointmentYear) + 1}`,
+        joiningYear: Number(newPuoForm.appointmentYear) || currentYear,
+        servicePeriod: newPuoForm.servicePeriod.trim() || `${newPuoForm.appointmentYear} - Present`,
+        phone: newPuoForm.phone.trim() || "",
+        email: newPuoForm.email.trim() || "",
+        bloodGroup: newPuoForm.bloodGroup || "O+",
+        photoUrl: newPuoForm.photoUrl.trim() || "",
+        biography: newPuoForm.biography.trim() || "Platoon Commander authorized command log dossier.",
+        status: MemberStatus.PLATOON_OFFICER,
+        verified: true,
+        userId: null,
+        graduationYear: null,
+      };
+
+      if (existing) {
+        await updateDocument("cadets", puoId, puoPayload);
+      } else {
+        await createDocument("cadets", puoPayload, puoId);
+      }
+
+      // Sync active PUO in former_puos
+      try {
+        await createDocument("former_puos", {
+          id: puoId,
+          name: puoPayload.fullName,
+          photo: puoPayload.photoUrl,
+          department: puoPayload.department,
+          session: puoPayload.session,
+          servicePeriod: puoPayload.servicePeriod,
+          status: "Active",
+        }, puoId);
+      } catch (err) {
+        console.warn("Could not sync active PUO to former_puos:", err);
+      }
+
+      // Sync leadership Platoon Commander reference
+      try {
+        const { collection, getDocs } = await import("firebase/firestore");
+        const { db } = await import("../../firebase");
+        const ldrSnap = await getDocs(collection(db, "leadership"));
+        const existingCmdr = ldrSnap.docs.find((d) => d.data().roleType === "platoon_commander");
+        if (existingCmdr) {
+          await updateDocument("leadership", existingCmdr.id, {
+            cadetId: puoId,
+            memberId: puoId,
+            position: "Platoon Commander (PUO)",
+            roleType: "platoon_commander",
+            status: "active",
+          });
+        } else {
+          const ldrId = generateId("ldr");
+          await createDocument("leadership", {
+            id: ldrId,
+            cadetId: puoId,
+            memberId: puoId,
+            position: "Platoon Commander (PUO)",
+            displayOrder: 1,
+            roleType: "platoon_commander",
+            status: "active",
+            appointmentDate: new Date().toISOString().split("T")[0],
+          }, ldrId);
+        }
+
+        // Update homepage command header
+        await updateDocument("homepage", "main", {
+          commanderName: puoPayload.fullName,
+          commanderRank: "Platoon Under Officer (PUO)",
+          commanderPhoto: puoPayload.photoUrl || "",
+          commanderMessage: puoPayload.biography || "",
+        });
+      } catch (err) {
+        console.warn("Could not sync leadership/homepage for PUO:", err);
+      }
+
+      showToast(`Officer "${puoPayload.fullName}" officially assigned as Platoon Under Officer!`, "success");
+      setShowAssignPUOModal(false);
+      setNewPuoForm({
+        fullName: "",
+        department: "",
+        session: `${currentYear}-${currentYear + 1}`,
+        appointmentYear: currentYear.toString(),
+        servicePeriod: `${currentYear} - Present`,
+        phone: "",
+        email: "",
+        bloodGroup: "A+",
+        photoUrl: "",
+        biography: "",
+        transitionPreviousActivePUO: true,
+        previousPUOEndYear: currentYear.toString(),
+      });
+      onRefresh();
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleToggleStatus = async (memberId: string, currentStatus: MemberStatus) => {
+    const member = members.find((m) => m.id === memberId);
+    const isPUO = member && (member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER || member.status === MemberStatus.FORMER_PUO);
+    if (isPUO) {
+      handleOpenPUOTenureModal(member);
+      return;
+    }
+
+    const nextStatus = currentStatus === MemberStatus.ACTIVE_CADET ? MemberStatus.ALUMNI : MemberStatus.ACTIVE_CADET;
     try {
       await updateDocument("cadets", memberId, { status: nextStatus });
-      showToast(`Member status updated to ${nextStatus}`, "success");
+      showToast(`Cadet status updated to ${nextStatus}`, "success");
       onRefresh();
     } catch (err: any) {
       showToast(err.message, "error");
@@ -621,6 +889,18 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
     }
   };
 
+  // Identify active PUO and former PUOs (PUO is not a cadet; faculty officer appointment)
+  const activePUO = members.find(
+    (m) =>
+      (m.rank === BNCCRank.PLATOON_UNDER_OFFICER || m.status === MemberStatus.PLATOON_OFFICER) &&
+      m.status !== MemberStatus.FORMER_PUO
+  );
+  const formerPUOs = members.filter(
+    (m) =>
+      m.status === MemberStatus.FORMER_PUO ||
+      (m.rank === BNCCRank.PLATOON_UNDER_OFFICER && m.status !== MemberStatus.PLATOON_OFFICER)
+  );
+
   return (
     <div id="members-manager-panel" className="space-y-6 relative text-xs">
       {/* Toast alert system */}
@@ -676,6 +956,527 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
         </div>
       )}
 
+      {/* MODAL: PUO Service Period & Tenure Management (Admin can make former or reinstate) */}
+      {puoTenureModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-amber-500/30 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-amber-500/10 border border-amber-500/30 text-amber-500 rounded-lg">
+                  <History className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="font-display font-black text-xs sm:text-sm uppercase tracking-wider text-slate-900 dark:text-white">
+                    {puoTenureModal.status === MemberStatus.PLATOON_OFFICER ? "Conclude PUO Service Period" : "Manage Former PUO Tenure"}
+                  </h4>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    Faculty Officer: {puoTenureModal.fullName}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setPuoTenureModal(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Officer Card */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center space-x-3">
+                {puoTenureModal.photoUrl ? (
+                  <img
+                    src={puoTenureModal.photoUrl}
+                    alt={puoTenureModal.fullName}
+                    className="w-11 h-11 rounded-full object-cover border-2 border-amber-500/50 shrink-0"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-11 h-11 rounded-full bg-amber-500 text-slate-950 font-black text-base flex items-center justify-center shrink-0">
+                    {puoTenureModal.fullName.charAt(0)}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <h5 className="font-display font-bold text-xs uppercase text-slate-900 dark:text-white truncate">
+                    {puoTenureModal.fullName}
+                  </h5>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    {puoTenureModal.department || "Faculty Department"}
+                  </p>
+                  <div className="flex items-center space-x-1.5 mt-0.5">
+                    <span className={`text-[8px] font-mono font-black uppercase px-1.5 py-0.2 rounded ${
+                      puoTenureModal.status === MemberStatus.FORMER_PUO
+                        ? "bg-slate-800 text-amber-300 border border-amber-500/30"
+                        : "bg-emerald-500 text-white"
+                    }`}>
+                      {puoTenureModal.status === MemberStatus.FORMER_PUO ? "Former PUO" : "Active PUO"}
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      Rank: Platoon Under Officer
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Service Period Input */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-mono font-bold text-slate-700 dark:text-slate-300 uppercase block">
+                  Recorded Service Period / Tenure
+                </label>
+                <input
+                  type="text"
+                  value={puoServicePeriodInput}
+                  onChange={(e) => setPuoServicePeriodInput(e.target.value)}
+                  placeholder={`e.g., ${puoTenureModal.joiningYear || 2018} - ${currentYear}`}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
+                />
+                <div className="flex items-center gap-1.5 text-[9px] font-mono pt-1">
+                  <span className="text-slate-400">Presets:</span>
+                  <button
+                    type="button"
+                    onClick={() => setPuoServicePeriodInput(`${puoTenureModal.joiningYear || 2018} - ${currentYear}`)}
+                    className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 hover:bg-amber-500/20 rounded border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 cursor-pointer"
+                  >
+                    {puoTenureModal.joiningYear || 2018} - {currentYear}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPuoServicePeriodInput(`${puoTenureModal.joiningYear || 2018} - Present`)}
+                    className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 hover:bg-amber-500/20 rounded border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 cursor-pointer"
+                  >
+                    {puoTenureModal.joiningYear || 2018} - Present
+                  </button>
+                </div>
+              </div>
+
+              {/* Explanatory text */}
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-sans bg-slate-50 dark:bg-slate-950 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                {puoTenureModal.status === MemberStatus.PLATOON_OFFICER
+                  ? "Marking this officer as Former PUO concludes their active command and records their completed tenure in the Roll of Honor. You can then assign a new Active PUO."
+                  : "This officer is currently archived as a Former PUO. You can update their historical tenure dates or reinstate them as Active Platoon Commander."}
+              </p>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex flex-col gap-2 font-mono">
+                {puoTenureModal.status === MemberStatus.PLATOON_OFFICER ? (
+                  <button
+                    type="button"
+                    onClick={() => handleUpdatePUOTenure(MemberStatus.FORMER_PUO)}
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all cursor-pointer shadow flex items-center justify-center space-x-1.5"
+                  >
+                    <History className="h-4 w-4" />
+                    <span>Conclude Service & Mark as Former PUO</span>
+                  </button>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleUpdatePUOTenure(MemberStatus.FORMER_PUO)}
+                      className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold py-2 rounded-lg text-[10px] uppercase transition-all cursor-pointer text-center"
+                    >
+                      Update Tenure
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdatePUOTenure(MemberStatus.PLATOON_OFFICER)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2 rounded-lg text-[10px] uppercase transition-all cursor-pointer text-center"
+                    >
+                      Reinstate as Active PUO
+                    </button>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPuoTenureModal(null)}
+                  className="w-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 font-bold py-2 rounded-lg text-[10px] uppercase transition-all cursor-pointer text-center"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Appoint & Assign New Platoon Under Officer (PUO) */}
+      {showAssignPUOModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-amber-500/40 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden my-8">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-amber-500 to-amber-600 p-4 sm:p-5 text-slate-950 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-slate-950 text-amber-400 rounded-lg">
+                  <Award className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-display font-black text-sm sm:text-base uppercase tracking-wider">
+                    Appoint & Assign Platoon Under Officer (PUO)
+                  </h3>
+                  <p className="text-[11px] font-mono font-semibold text-slate-950/85">
+                    PUO is a Faculty Officer (Not a cadet) • Only Rank: Platoon Under Officer
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAssignPUOModal(false)}
+                className="p-1 rounded-lg bg-slate-950/10 hover:bg-slate-950/20 text-slate-950 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleAssignPUO} className="p-5 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-lg text-[11px] text-amber-800 dark:text-amber-400 font-sans leading-relaxed">
+                <strong>Officer Appointment Note:</strong> The Platoon Under Officer (PUO) is the faculty commander in charge of the college platoon. As per BNCC regulations, PUO is not a student cadet and only holds the rank of <em>Platoon Under Officer (PUO)</em>.
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400 uppercase block">
+                    Officer Full Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g., MD. KAMRUL HASAN"
+                    value={newPuoForm.fullName}
+                    onChange={(e) => setNewPuoForm({ ...newPuoForm, fullName: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500 font-sans"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400 uppercase block">
+                    Department & Academic Designation <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g., Associate Professor, Physics"
+                    value={newPuoForm.department}
+                    onChange={(e) => setNewPuoForm({ ...newPuoForm, department: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500 font-sans"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400 uppercase block">
+                    Appointment Year
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={newPuoForm.appointmentYear}
+                    onChange={(e) => {
+                      const yr = e.target.value;
+                      setNewPuoForm({
+                        ...newPuoForm,
+                        appointmentYear: yr,
+                        servicePeriod: `${yr} - Present`,
+                      });
+                    }}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400 uppercase block">
+                    Initial Service Tenure
+                  </label>
+                  <input
+                    type="text"
+                    value={newPuoForm.servicePeriod}
+                    onChange={(e) => setNewPuoForm({ ...newPuoForm, servicePeriod: e.target.value })}
+                    placeholder="e.g., 2026 - Present"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400 uppercase block">
+                    Service Session
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., 2025-2026"
+                    value={newPuoForm.session}
+                    onChange={(e) => setNewPuoForm({ ...newPuoForm, session: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 text-xs font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400 uppercase block">
+                    Contact Hotline
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., +880 1711 000000"
+                    value={newPuoForm.phone}
+                    onChange={(e) => setNewPuoForm({ ...newPuoForm, phone: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400 uppercase block">
+                    Official Email
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="e.g., puo@ugcbncc.org"
+                    value={newPuoForm.email}
+                    onChange={(e) => setNewPuoForm({ ...newPuoForm, email: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              {/* Profile Photo */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400 uppercase block">
+                  Officer Portrait Photo
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Paste image URL or upload below..."
+                    value={newPuoForm.photoUrl}
+                    onChange={(e) => setNewPuoForm({ ...newPuoForm, photoUrl: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
+                  />
+                  <label className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 font-mono text-[10px] font-bold cursor-pointer shrink-0 flex items-center justify-center text-slate-700 dark:text-slate-300">
+                    UPLOAD
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setNewPuoForm({ ...newPuoForm, photoUrl: reader.result as string });
+                            showToast("Uploaded photo preview successfully", "success");
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                {newPuoForm.photoUrl && (
+                  <div className="mt-2 flex items-center space-x-3 p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800">
+                    <img
+                      src={newPuoForm.photoUrl}
+                      alt="PUO Preview"
+                      className="w-12 h-12 rounded-full object-cover border border-amber-500"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="text-[10px] font-mono text-slate-400">
+                      Photo uploaded. Officer will be displayed on Commander desk.
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Biography / Commander's Order */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-400 uppercase block">
+                  Commander's Initial Order / Biography
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Official mission statement or introduction message to the platoon..."
+                  value={newPuoForm.biography}
+                  onChange={(e) => setNewPuoForm({ ...newPuoForm, biography: e.target.value })}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {/* SUCCESSION HANDOVER: Transition existing active PUO to Former PUO */}
+              {activePUO && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-955/30 border border-amber-300 dark:border-amber-900/50 rounded-lg space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="transitionPreviousActivePUO"
+                      checked={newPuoForm.transitionPreviousActivePUO}
+                      onChange={(e) => setNewPuoForm({ ...newPuoForm, transitionPreviousActivePUO: e.target.checked })}
+                      className="rounded border-amber-400 text-amber-500 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                    />
+                    <label htmlFor="transitionPreviousActivePUO" className="font-mono text-xs font-bold text-amber-900 dark:text-amber-300 cursor-pointer select-none">
+                      Conclude tenure of current Active PUO "{activePUO.fullName}" and set as Former PUO
+                    </label>
+                  </div>
+                  {newPuoForm.transitionPreviousActivePUO && (
+                    <div className="pl-6 pt-1 text-[11px] font-mono text-slate-600 dark:text-slate-400 flex items-center space-x-2">
+                      <span>Concluding Tenure:</span>
+                      <span className="font-bold text-amber-600 dark:text-amber-400">
+                        {activePUO.joiningYear || 2018} - {newPuoForm.previousPUOEndYear || currentYear}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Form Buttons */}
+              <div className="flex gap-2 pt-2 font-mono">
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer shadow flex items-center justify-center space-x-1.5"
+                >
+                  <Award className="h-4 w-4" />
+                  <span>{isSubmitting ? "APPOINTING OFFICER..." : "CONFIRM APPOINTMENT & ASSIGN PUO"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAssignPUOModal(false)}
+                  className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 font-bold px-4 py-2.5 rounded-lg text-xs uppercase transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* PUO Command & Succession Spotlight Banner */}
+      <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/5 to-slate-50 dark:to-slate-900 border border-amber-500/30 rounded-xl p-4 sm:p-5 shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-500/20 pb-3">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 bg-amber-500 text-slate-950 rounded-lg shadow-sm">
+              <Award className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h2 className="font-display font-black text-sm uppercase tracking-wider text-slate-900 dark:text-amber-400">
+                  Platoon Under Officer (PUO) Command Status
+                </h2>
+                <span className="text-[9px] font-mono font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded">
+                  Faculty Officer
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-sans mt-0.5">
+                PUO is not a cadet — his only rank is <strong>Platoon Under Officer (PUO)</strong>. Admin can conclude his service period, mark him as Former PUO, and assign a new PUO.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setShowAssignPUOModal(true)}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-mono font-black uppercase px-3.5 py-2 rounded-lg flex items-center space-x-1.5 transition-all cursor-pointer text-[10px] shadow"
+              title="Assign or appoint a new Platoon Under Officer"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              <span>+ Assign New PUO</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Active PUO Card or Notice */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+          <div className="md:col-span-2 bg-white dark:bg-slate-950/70 border border-amber-500/30 rounded-lg p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            {activePUO ? (
+              <div className="flex items-center space-x-3 min-w-0">
+                {activePUO.photoUrl ? (
+                  <img
+                    src={activePUO.photoUrl}
+                    alt={activePUO.fullName}
+                    className="w-12 h-12 rounded-full object-cover border-2 border-amber-500 shadow shrink-0"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-amber-500 text-slate-950 font-black text-lg flex items-center justify-center border-2 border-amber-400 shrink-0">
+                    {activePUO.fullName.charAt(0)}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="flex items-center space-x-2 flex-wrap gap-y-0.5">
+                    <span className="font-display font-black text-sm text-slate-900 dark:text-white uppercase truncate">
+                      {activePUO.fullName}
+                    </span>
+                    <span className="text-[9px] font-mono font-black uppercase bg-emerald-500 text-white px-2 py-0.5 rounded-full">
+                      Active Platoon Commander
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 font-sans font-medium">
+                    {activePUO.department || "Faculty Department"}
+                  </p>
+                  <div className="flex items-center space-x-2 text-[10px] font-mono text-amber-700 dark:text-amber-400 mt-1">
+                    <span>Appointment: {activePUO.joiningYear}</span>
+                    <span>•</span>
+                    <span className="font-bold">Tenure: {activePUO.servicePeriod || `${activePUO.joiningYear} - Present`}</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-3 text-slate-500 dark:text-slate-400 py-1">
+                <AlertTriangle className="h-6 w-6 text-amber-500 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200">No Active Platoon Under Officer Assigned</p>
+                  <p className="text-[11px]">Click "+ Assign New PUO" to appoint the faculty Platoon Commander.</p>
+                </div>
+              </div>
+            )}
+
+            {activePUO && (
+              <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+                <button
+                  onClick={() => handleOpenPUOTenureModal(activePUO)}
+                  className="bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/80 dark:hover:bg-amber-900 text-amber-900 dark:text-amber-300 border border-amber-400/50 px-3 py-1.5 rounded font-mono font-bold text-[10px] uppercase transition-all flex items-center space-x-1 cursor-pointer"
+                  title="Make former while service period ends"
+                >
+                  <History className="h-3 w-3" />
+                  <span>End Service / Make Former</span>
+                </button>
+                <button
+                  onClick={() => handleStartEdit(activePUO)}
+                  className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 rounded font-mono font-bold text-[10px] uppercase transition-all cursor-pointer"
+                  title="Edit PUO profile"
+                >
+                  <Edit className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Former PUOs Summary Column */}
+          <div className="bg-white dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-lg p-3 sm:p-4 flex flex-col justify-between">
+            <div>
+              <span className="text-[9px] font-mono text-slate-400 uppercase font-bold block">Roll of Honor</span>
+              <h4 className="font-display font-bold text-xs text-slate-900 dark:text-white uppercase mt-0.5">
+                Former PUOs Archive ({formerPUOs.length})
+              </h4>
+              <p className="text-[10px] text-slate-500 font-sans mt-1">
+                Historical faculty platoon commanders who completed their service tenures.
+              </p>
+            </div>
+            <div className="pt-2">
+              <button
+                onClick={() => {
+                  setStatusFilter(MemberStatus.FORMER_PUO);
+                  setRankFilter("All");
+                }}
+                className="text-amber-600 dark:text-amber-400 hover:underline font-mono text-[10px] font-bold uppercase cursor-pointer flex items-center space-x-1"
+              >
+                <span>View Former PUOs List →</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Search and Quick Filters Row */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-250 dark:border-slate-800 shadow-sm space-y-4 text-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -726,11 +1527,13 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
             </button>
 
             <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-mono font-extrabold uppercase px-4 py-2 rounded flex items-center space-x-1.5 transition-all cursor-pointer text-[10px]"
+              onClick={() => {
+                setShowAddForm(!showAddForm);
+              }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-mono font-extrabold uppercase px-3.5 py-2 rounded flex items-center space-x-1.5 transition-all cursor-pointer text-[10px]"
             >
               <UserPlus className="h-3.5 w-3.5" />
-              <span>{showAddForm ? "CLOSE FORM" : "+ NEW CADET"}</span>
+              <span>{showAddForm ? "CLOSE CADET FORM" : "+ NEW CADET"}</span>
             </button>
           </div>
         </div>
@@ -746,7 +1549,8 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
             >
               <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value="All">All Statuses</option>
               <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.ACTIVE_CADET}>Active Cadet</option>
-              <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.PLATOON_OFFICER}>Platoon Officer (PUO)</option>
+              <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.PLATOON_OFFICER}>Active PUO (Platoon Commander)</option>
+              <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.FORMER_PUO}>Former PUO</option>
               <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.ALUMNI}>Alumni</option>
               <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.HONORARY_MEMBER}>Honorary Member</option>
             </select>
@@ -760,9 +1564,14 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
               className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded p-1.5 w-full text-slate-900 dark:text-slate-100 focus:outline-none"
             >
               <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value="All">All Ranks</option>
-              {Object.values(BNCCRank).map(r => (
-                <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" key={r} value={r}>{r}</option>
-              ))}
+              <optgroup label="Cadet Ranks">
+                {CADET_RANKS.map(r => (
+                  <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" key={r} value={r}>{r}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Officer Appointment">
+                <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={BNCCRank.PLATOON_UNDER_OFFICER}>Platoon Under Officer (PUO)</option>
+              </optgroup>
             </select>
           </div>
 
@@ -860,7 +1669,7 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
           {/* Table Header and count */}
           <div className="p-4 border-b border-slate-100 dark:border-slate-850 flex justify-between items-center bg-slate-50/50 dark:bg-slate-955/20">
             <h3 className="font-display font-black text-slate-900 dark:text-white text-xs uppercase tracking-wider">
-              CADET DATABASE REGISTRY ({filteredAndSortedMembers.length} OF {members.length} ROSTER)
+              PERSONNEL & CADET DATABASE REGISTRY ({filteredAndSortedMembers.length} OF {members.length} ROSTER)
             </h3>
             {totalItems > 0 && (
               <span className="text-[10px] font-mono text-slate-400">
@@ -884,7 +1693,7 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
                   </th>
                   <th className="py-3 px-3 cursor-pointer hover:text-slate-950 dark:hover:text-white font-semibold transition-colors" onClick={() => toggleSort("fullName")}>
                     <div className="flex items-center space-x-1.5">
-                      <span>Name & Cadet Profile</span>
+                      <span>Name & Personnel Profile</span>
                       <ArrowUpDown className="h-3 w-3 text-amber-500" />
                     </div>
                   </th>
@@ -900,7 +1709,12 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {paginatedMembers.map((m) => (
+                {paginatedMembers.map((m) => {
+                  const isPUO = m.rank === BNCCRank.PLATOON_UNDER_OFFICER || 
+                    m.rank === "Platoon Under Officer (PUO)" ||
+                    m.status === MemberStatus.PLATOON_OFFICER || 
+                    m.status === MemberStatus.FORMER_PUO;
+                  return (
                   <tr key={m.id} className={`hover:bg-slate-50/40 dark:hover:bg-slate-850/25 transition-colors ${selectedIds.has(m.id) ? "bg-amber-50/20 dark:bg-amber-955/10" : ""}`}>
                     <td className="py-2.5 px-2.5 w-9 text-center">
                       <input
@@ -921,37 +1735,47 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
                           />
                         ) : (
                           <div className="w-8 h-8 rounded-full bg-army-900 border border-amber-500/40 text-amber-400 font-bold text-xs flex items-center justify-center shrink-0">
-                            {m.fullName ? m.fullName.charAt(0) : "C"}
+                            {m.fullName ? m.fullName.charAt(0) : (isPUO ? "P" : "C")}
                           </div>
                         )}
                         <div className="min-w-0">
                           <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center space-x-1.5 flex-wrap gap-y-0.5">
                             <span className="font-sans font-bold text-xs">{m.fullName}</span>
                             {m.verified && (
-                              <span className="text-[8px] bg-emerald-500 text-white px-1.5 py-0.2 rounded font-mono font-bold uppercase shrink-0" title="Verified Cadet">V</span>
+                              <span className="text-[8px] bg-emerald-500 text-white px-1.5 py-0.2 rounded font-mono font-bold uppercase shrink-0" title="Verified Member">V</span>
                             )}
                             {m.isArmyStaff && (
                               <span className="text-[8px] bg-red-600 text-white px-1.5 py-0.2 rounded font-mono uppercase font-black shrink-0">Army Staff</span>
                             )}
-                            {m.rank === BNCCRank.PLATOON_UNDER_OFFICER && (
-                              <span className="text-[8px] bg-indigo-600 text-white px-1.5 py-0.2 rounded font-mono uppercase font-black shrink-0">Faculty PUO</span>
+                            {isPUO && (
+                              m.status === MemberStatus.FORMER_PUO ? (
+                                <span className="text-[8px] bg-slate-800 text-amber-300 border border-amber-500/40 px-1.5 py-0.2 rounded font-mono uppercase font-black shrink-0">Former PUO</span>
+                              ) : (
+                                <span className="text-[8px] bg-amber-500 text-slate-950 font-mono font-black uppercase px-1.5 py-0.2 rounded shrink-0">Faculty PUO</span>
+                              )
                             )}
                           </div>
                           <div className="text-[10px] text-slate-400 font-mono flex items-center space-x-1.5 flex-wrap gap-y-0.5 mt-0.5">
-                            <span>ID: {m.id}</span>
-                            {m.cadetIdImage && (
+                            {!isPUO && <span>ID: {m.id}</span>}
+                            {!isPUO && m.cadetIdImage && (
                               <a
                                 href={m.cadetIdImage}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-amber-500 hover:text-amber-600 font-black text-[8px] tracking-wide font-mono border border-amber-500/20 bg-amber-500/5 px-1 py-0.2 rounded leading-none inline-block hover:scale-105 transition-all shrink-0"
-                                title="Click to view Cadet ID Card reference image in a new tab"
+                                title="Click to view ID Card reference image in a new tab"
                               >
                                 ID CARD
                               </a>
                             )}
-                            <span>•</span>
-                            <span>Joined: {m.joiningYear}</span>
+                            {!isPUO && <span>•</span>}
+                            <span>{isPUO ? "Appointed:" : "Joined:"} {m.joiningYear}</span>
+                            {m.servicePeriod && (
+                              <>
+                                <span>•</span>
+                                <span className="text-amber-500 font-bold">Tenure: {m.servicePeriod}</span>
+                              </>
+                            )}
                             {m.bloodGroup && (
                               <>
                                 <span>•</span>
@@ -959,30 +1783,63 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
                               </>
                             )}
                           </div>
+                          {(m.currentProfession || m.currentOrganization) && (
+                            <div className="flex items-center space-x-1 text-[10px] text-amber-700 dark:text-amber-400 font-sans mt-0.5 truncate max-w-xs">
+                              <Briefcase className="h-3 w-3 shrink-0 text-slate-400" />
+                              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                {m.currentProfession || "Role"}
+                              </span>
+                              {m.currentOrganization && (
+                                <span className="text-amber-600 dark:text-amber-400">
+                                  @ {m.currentOrganization}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {m.address && (
+                            <div className="flex items-center space-x-1 text-[10px] text-slate-500 dark:text-slate-400 font-sans mt-0.5 truncate max-w-xs" title={`Confidential Address: ${m.address}`}>
+                              <Home className="h-3 w-3 shrink-0 text-amber-500/70" />
+                              <span className="truncate">{m.address}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
                     <td className="py-2.5 px-3 font-mono font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-amber-400 border border-slate-200 dark:border-slate-700 text-[10px]">
+                      <span className={`px-2 py-0.5 rounded text-[10px] border ${
+                        isPUO
+                          ? "bg-amber-500/10 text-amber-500 border-amber-500/30 font-bold"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-amber-400 border-slate-200 dark:border-slate-700"
+                      }`}>
                         {m.rank}
                       </span>
                     </td>
                     <td className="py-2.5 px-3 whitespace-nowrap">
-                      <button
-                        onClick={() => handleToggleStatus(m.id, m.status)}
-                        className={`text-[9px] px-2 py-0.5 rounded-full font-mono uppercase tracking-wide border cursor-pointer font-bold transition-all ${
-                          m.status === MemberStatus.PLATOON_OFFICER || m.rank === BNCCRank.PLATOON_UNDER_OFFICER
-                            ? "bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-400 border-amber-300 dark:border-amber-800"
-                            : m.status === MemberStatus.ACTIVE_CADET
-                            ? "bg-emerald-50 dark:bg-emerald-955/20 text-emerald-800 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900"
-                            : "bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700"
-                        }`}
-                        title="Click to toggle member status (Active Cadet -> Platoon Officer -> Alumni)"
-                      >
-                        {m.rank === BNCCRank.PLATOON_UNDER_OFFICER && m.status === MemberStatus.ACTIVE_CADET
-                          ? MemberStatus.PLATOON_OFFICER
-                          : m.status}
-                      </button>
+                      {isPUO ? (
+                        <button
+                          onClick={() => handleOpenPUOTenureModal(m)}
+                          className={`text-[9px] px-2.5 py-0.5 rounded-full font-mono uppercase tracking-wide border cursor-pointer font-bold transition-all ${
+                            m.status === MemberStatus.FORMER_PUO
+                              ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:border-amber-500"
+                              : "bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-400 border-amber-300 dark:border-amber-800 hover:border-amber-500"
+                          }`}
+                          title="Click to manage PUO service period / make former"
+                        >
+                          {m.status === MemberStatus.FORMER_PUO ? "Former PUO" : "Platoon Officer (PUO)"}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleToggleStatus(m.id, m.status)}
+                          className={`text-[9px] px-2 py-0.5 rounded-full font-mono uppercase tracking-wide border cursor-pointer font-bold transition-all ${
+                            m.status === MemberStatus.ACTIVE_CADET
+                              ? "bg-emerald-50 dark:bg-emerald-955/20 text-emerald-800 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900 hover:border-emerald-400"
+                              : "bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-400"
+                          }`}
+                          title="Click to toggle cadet status (Active Cadet <-> Alumni)"
+                        >
+                          {m.status}
+                        </button>
+                      )}
                     </td>
                     <td className="py-2.5 px-3 text-slate-700 dark:text-slate-200 font-sans text-xs whitespace-nowrap">
                       {m.department || "General"}
@@ -1013,18 +1870,28 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
                           {m.hideContactInfo ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                         </button>
 
-                        <button
-                          onClick={() => handlePromoteRank(m.id, m.rank)}
-                          className="p-1.5 rounded border border-slate-200 dark:border-slate-700 hover:border-amber-500 text-slate-500 hover:text-amber-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                          title="Promote Cadet to Next Higher Rank"
-                        >
-                          <ArrowUpCircle className="h-3.5 w-3.5" />
-                        </button>
+                        {isPUO ? (
+                          <button
+                            onClick={() => handleOpenPUOTenureModal(m)}
+                            className="p-1.5 rounded border border-amber-500/30 hover:border-amber-500 text-amber-600 hover:text-amber-500 dark:text-amber-400 hover:bg-amber-500/10 transition-colors cursor-pointer"
+                            title="Manage PUO Service Period / Make Former PUO"
+                          >
+                            <History className="h-3.5 w-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handlePromoteRank(m.id, m.rank)}
+                            className="p-1.5 rounded border border-slate-200 dark:border-slate-700 hover:border-amber-500 text-slate-500 hover:text-amber-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                            title="Promote Cadet to Next Higher Rank"
+                          >
+                            <ArrowUpCircle className="h-3.5 w-3.5" />
+                          </button>
+                        )}
 
                         <button
                           onClick={() => handleDuplicate(m)}
                           className="p-1.5 rounded border border-slate-200 dark:border-slate-700 hover:border-amber-500 text-slate-500 hover:text-amber-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                          title="Duplicate Cadet parameters for swift Batch Entry"
+                          title="Duplicate parameters for swift Batch Entry"
                         >
                           <Copy className="h-3.5 w-3.5" />
                         </button>
@@ -1047,7 +1914,8 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
                       </div>
                     </td>
                   </tr>
-                ))}
+                );
+              })}
               </tbody>
             </table>
             
@@ -1136,7 +2004,11 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
           <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-250 dark:border-slate-800 shadow-sm p-5 space-y-4 h-fit">
             <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-2">
               <h3 className="font-display font-black text-slate-900 dark:text-white text-xs uppercase tracking-wider">
-                {editingMember ? "UPDATE CADET PROFILE" : "MANUAL PROFILE REGISTRY"}
+                {editingMember 
+                  ? (editingMember.rank === BNCCRank.PLATOON_UNDER_OFFICER || editingMember.status === MemberStatus.PLATOON_OFFICER || editingMember.status === MemberStatus.FORMER_PUO
+                      ? "UPDATE PLATOON UNDER OFFICER (PUO)"
+                      : "UPDATE CADET PROFILE")
+                  : "ENROLL NEW CADET DOSSIER"}
               </h3>
               {editingMember && (
                 <button
@@ -1149,18 +2021,26 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
             </div>
             
             <form onSubmit={handleCreateMember} className="space-y-4 text-xs">
-              <div className="space-y-1">
-                <label className="font-mono text-slate-500 uppercase text-[9px]">Cadet ID (Manual Entry)</label>
-                <input
-                  type="text"
-                  required
-                  disabled={!!(editingMember && editingMember.id && editingMember.id.startsWith("UGC-"))}
-                  placeholder="e.g., UGC-2023-105"
-                  value={form.id}
-                  onChange={(e) => setForm({ ...form, id: e.target.value })}
-                  className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-3 w-full text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none disabled:opacity-60 focus:border-amber-500"
-                />
-              </div>
+              {editingMember && (editingMember.rank === BNCCRank.PLATOON_UNDER_OFFICER || editingMember.status === MemberStatus.PLATOON_OFFICER || editingMember.status === MemberStatus.FORMER_PUO) ? (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-lg text-[11px] text-amber-800 dark:text-amber-300 font-sans">
+                  <strong>Faculty Platoon Commander:</strong> PUO holds a faculty appointment and has no Cadet ID.
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <label className="font-mono text-slate-500 uppercase text-[9px]">
+                    Cadet ID (e.g. UGC-2023-105) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    disabled={!!(editingMember && editingMember.id && editingMember.id.startsWith("UGC-"))}
+                    placeholder="e.g., UGC-2023-105"
+                    value={form.id}
+                    onChange={(e) => setForm({ ...form, id: e.target.value })}
+                    className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-3 w-full text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none disabled:opacity-60 focus:border-amber-500"
+                  />
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="font-mono text-slate-500 uppercase text-[9px]">Full Name</label>
@@ -1177,37 +2057,36 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="font-mono text-slate-500 uppercase text-[9px]">Rank</label>
-                  <select
-                    value={form.rank}
-                    onChange={(e) => {
-                      const selectedRank = e.target.value as BNCCRank;
-                      const autoStatus = selectedRank === BNCCRank.PLATOON_UNDER_OFFICER ? MemberStatus.PLATOON_OFFICER : form.status;
-                      setForm({ ...form, rank: selectedRank, status: autoStatus });
-                    }}
-                    className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-2 w-full text-slate-900 dark:text-slate-100 focus:outline-none"
-                  >
-                    <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={BNCCRank.RECRUIT}>Recruit</option>
-                    <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={BNCCRank.CADET}>Cadet</option>
-                    <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={BNCCRank.LANCE_CORPORAL}>Lance Corporal</option>
-                    <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={BNCCRank.CORPORAL}>Corporal</option>
-                    <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={BNCCRank.SERGEANT}>Sergeant</option>
-                    <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={BNCCRank.CADET_UNDER_OFFICER}>Cadet Under Officer</option>
-                    <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={BNCCRank.PLATOON_UNDER_OFFICER}>Platoon Under Officer</option>
-                  </select>
+                  {editingMember && (editingMember.rank === BNCCRank.PLATOON_UNDER_OFFICER || editingMember.status === MemberStatus.PLATOON_OFFICER || editingMember.status === MemberStatus.FORMER_PUO) ? (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded py-2 px-3 text-xs font-mono font-bold text-amber-500 flex items-center space-x-1.5">
+                      <Award className="h-3.5 w-3.5 shrink-0" />
+                      <span>Platoon Under Officer (PUO)</span>
+                    </div>
+                  ) : (
+                    <select
+                      value={form.rank}
+                      onChange={(e) => setForm({ ...form, rank: e.target.value as BNCCRank })}
+                      className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-2 w-full text-slate-900 dark:text-slate-100 focus:outline-none"
+                    >
+                      {CADET_RANKS.map((r) => (
+                        <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="font-mono text-slate-500 uppercase text-[9px]">
                     {form.isArmyStaff
                       ? "Assigned Role / Army Appointment"
-                      : form.rank === BNCCRank.PLATOON_UNDER_OFFICER
-                      ? "Designation / Department (Group)"
+                      : form.rank === BNCCRank.PLATOON_UNDER_OFFICER || form.status === MemberStatus.PLATOON_OFFICER || form.status === MemberStatus.FORMER_PUO
+                      ? "Designation & Academic Department"
                       : "HSC Group"}
                   </label>
-                  {form.isArmyStaff || form.rank === BNCCRank.PLATOON_UNDER_OFFICER ? (
+                  {form.isArmyStaff || form.rank === BNCCRank.PLATOON_UNDER_OFFICER || form.status === MemberStatus.PLATOON_OFFICER || form.status === MemberStatus.FORMER_PUO ? (
                     <input
                       type="text"
                       required
-                      placeholder={form.isArmyStaff ? "e.g., Military Instructor" : "e.g., Associate Professor, Bangla"}
+                      placeholder={form.isArmyStaff ? "e.g., Military Instructor" : "e.g., Associate Professor, Biology"}
                       value={form.department}
                       onChange={(e) => setForm({ ...form, department: e.target.value })}
                       className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-3 w-full text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
@@ -1228,10 +2107,10 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <label className="font-mono text-slate-500 uppercase text-[9px]">
-                    {form.isArmyStaff || form.rank === BNCCRank.PLATOON_UNDER_OFFICER
+                    {form.isArmyStaff || form.rank === BNCCRank.PLATOON_UNDER_OFFICER || form.status === MemberStatus.PLATOON_OFFICER || form.status === MemberStatus.FORMER_PUO
                       ? "Service / Posting Session"
                       : "Academic Session"}
                   </label>
@@ -1248,7 +2127,7 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
                   <label className="font-mono text-slate-500 uppercase text-[9px]">
                     {form.isArmyStaff
                       ? "Posting Year"
-                      : form.rank === BNCCRank.PLATOON_UNDER_OFFICER
+                      : form.rank === BNCCRank.PLATOON_UNDER_OFFICER || form.status === MemberStatus.PLATOON_OFFICER || form.status === MemberStatus.FORMER_PUO
                       ? "Appointment Year"
                       : "Joining Year"}
                   </label>
@@ -1260,7 +2139,32 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
                     className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-3 w-full text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
                   />
                 </div>
+                <div className="space-y-1">
+                  <label className="font-mono text-slate-500 uppercase text-[9px]">
+                    Graduation Year (Alumni)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="e.g., 2025"
+                    value={form.graduationYear}
+                    onChange={(e) => setForm({ ...form, graduationYear: e.target.value })}
+                    className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-3 w-full text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
               </div>
+
+              {(form.rank === BNCCRank.PLATOON_UNDER_OFFICER || form.status === MemberStatus.PLATOON_OFFICER || form.status === MemberStatus.FORMER_PUO) && (
+                <div className="space-y-1">
+                  <label className="font-mono text-slate-500 uppercase text-[9px]">PUO Service Period / Tenure</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., 2018 - 2024 or 2024 - Present"
+                    value={form.servicePeriod}
+                    onChange={(e) => setForm({ ...form, servicePeriod: e.target.value })}
+                    className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-3 w-full text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
@@ -1282,16 +2186,26 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
                 </div>
                 <div className="space-y-1">
                   <label className="font-mono text-slate-500 uppercase text-[9px]">Status</label>
-                  <select
-                    value={form.status}
-                    onChange={(e) => setForm({ ...form, status: e.target.value as MemberStatus })}
-                    className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-2 w-full text-slate-900 dark:text-slate-100 focus:outline-none"
-                  >
-                    <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.ACTIVE_CADET}>Active Cadet</option>
-                    <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.PLATOON_OFFICER}>Platoon Officer (PUO)</option>
-                    <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.ALUMNI}>Alumni</option>
-                    <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.HONORARY_MEMBER}>Honorary Member</option>
-                  </select>
+                  {editingMember && (editingMember.rank === BNCCRank.PLATOON_UNDER_OFFICER || editingMember.status === MemberStatus.PLATOON_OFFICER || editingMember.status === MemberStatus.FORMER_PUO) ? (
+                    <select
+                      value={form.status}
+                      onChange={(e) => setForm({ ...form, status: e.target.value as MemberStatus })}
+                      className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-2 w-full text-slate-900 dark:text-slate-100 focus:outline-none font-bold"
+                    >
+                      <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.PLATOON_OFFICER}>Active PUO (Platoon Commander)</option>
+                      <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.FORMER_PUO}>Former PUO (Service Ended)</option>
+                    </select>
+                  ) : (
+                    <select
+                      value={form.status}
+                      onChange={(e) => setForm({ ...form, status: e.target.value as MemberStatus })}
+                      className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-2 w-full text-slate-900 dark:text-slate-100 focus:outline-none"
+                    >
+                      <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.ACTIVE_CADET}>Active Cadet</option>
+                      <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.ALUMNI}>Alumni</option>
+                      <option className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" value={MemberStatus.HONORARY_MEMBER}>Honorary Member</option>
+                    </select>
+                  )}
                 </div>
               </div>
 
@@ -1319,6 +2233,27 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
                 />
               </div>
 
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-mono text-slate-500 uppercase text-[9px] font-bold">
+                    Residential Address (Admin Confidential Record)
+                  </label>
+                  <span className="text-[9px] font-mono text-amber-500 font-semibold">
+                    Hidden from public profile
+                  </span>
+                </div>
+                <div className="relative">
+                  <Home className="absolute left-2.5 top-2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="e.g., Sector 10, Road 12, House 4, Uttara, Dhaka"
+                    value={form.address}
+                    onChange={(e) => setForm({ ...form, address: e.target.value })}
+                    className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 pl-8 pr-3 w-full text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-sans"
+                  />
+                </div>
+              </div>
+
               <div className="flex flex-col space-y-1.5 pt-1 pb-1">
                 <div className="flex items-center space-x-2">
                   <input
@@ -1344,6 +2279,57 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
                   <label htmlFor="isArmyStaff" className="font-mono text-slate-700 dark:text-slate-300 uppercase text-[9px] cursor-pointer font-bold select-none">
                     Is Assigned Regular Army Staff (Military Instructor/NCO/WO)
                   </label>
+                </div>
+              </div>
+
+              {/* CURRENT SERVICE / CAREER (Designation & Company Name) */}
+              <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-lg space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Briefcase className="h-4 w-4 text-amber-500" />
+                  <span className="font-mono text-[10px] font-bold uppercase text-slate-800 dark:text-slate-200">
+                    Current Service / Career (Alumni & Officers)
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="space-y-1">
+                    <label className="font-mono text-slate-500 uppercase text-[9px]">
+                      Designation / Role
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Senior Software Engineer"
+                      value={form.currentProfession}
+                      onChange={(e) => setForm({ ...form, currentProfession: e.target.value })}
+                      className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-3 w-full text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-sans"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-mono text-slate-500 uppercase text-[9px]">
+                      Company / Organization Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Grameenphone Ltd."
+                      value={form.currentOrganization}
+                      onChange={(e) => setForm({ ...form, currentOrganization: e.target.value })}
+                      className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-3 w-full text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-sans"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-mono text-slate-500 uppercase text-[9px]">
+                    Work Location / City
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Dhaka, Bangladesh"
+                    value={form.currentCity}
+                    onChange={(e) => setForm({ ...form, currentCity: e.target.value })}
+                    className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-3 w-full text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-amber-500 font-sans"
+                  />
                 </div>
               </div>
 
@@ -1407,54 +2393,56 @@ export default function MembersManager({ members, onRefresh, onDeleteMember }: M
                 )}
               </div>
 
-              <div className="space-y-1">
-                <label className="font-mono text-slate-500 uppercase text-[9px]">Cadet ID Reference Image</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Paste Image URL or upload a file"
-                    value={form.cadetIdImage}
-                    onChange={(e) => setForm({ ...form, cadetIdImage: e.target.value })}
-                    className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-3 w-full text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
-                  />
-                  <label className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded px-3 py-1.5 font-mono text-[10px] font-bold cursor-pointer shrink-0 flex items-center justify-center text-slate-700 dark:text-slate-300">
-                    UPLOAD
+              {(!editingMember || (editingMember.rank !== BNCCRank.PLATOON_UNDER_OFFICER && editingMember.status !== MemberStatus.PLATOON_OFFICER && editingMember.status !== MemberStatus.FORMER_PUO)) && (
+                <div className="space-y-1">
+                  <label className="font-mono text-slate-500 uppercase text-[9px]">Cadet ID Reference Image</label>
+                  <div className="flex gap-2">
                     <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setForm({ ...form, cadetIdImage: reader.result as string });
-                            showToast("Uploaded ID card reference successfully", "success");
-                          };
-                          reader.readAsDataURL(file);
-                        }
-                      }}
+                      type="text"
+                      placeholder="Paste Image URL or upload a file"
+                      value={form.cadetIdImage}
+                      onChange={(e) => setForm({ ...form, cadetIdImage: e.target.value })}
+                      className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded py-1.5 px-3 w-full text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
                     />
-                  </label>
-                </div>
-                {form.cadetIdImage && (
-                  <div className="mt-1.5 relative border border-slate-200 dark:border-slate-800 rounded p-1.5 bg-slate-50 dark:bg-slate-950 flex items-center justify-between">
-                    <img
-                      src={form.cadetIdImage}
-                      alt="Cadet ID Reference Preview"
-                      className="h-14 w-auto object-contain rounded"
-                      onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setForm({ ...form, cadetIdImage: "" })}
-                      className="text-red-500 hover:text-red-600 font-bold uppercase text-[9px] font-mono cursor-pointer"
-                    >
-                      Remove
-                    </button>
+                    <label className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded px-3 py-1.5 font-mono text-[10px] font-bold cursor-pointer shrink-0 flex items-center justify-center text-slate-700 dark:text-slate-300">
+                      UPLOAD
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setForm({ ...form, cadetIdImage: reader.result as string });
+                              showToast("Uploaded ID card reference successfully", "success");
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
                   </div>
-                )}
-              </div>
+                  {form.cadetIdImage && (
+                    <div className="mt-1.5 relative border border-slate-200 dark:border-slate-800 rounded p-1.5 bg-slate-50 dark:bg-slate-950 flex items-center justify-between">
+                      <img
+                        src={form.cadetIdImage}
+                        alt="Cadet ID Reference Preview"
+                        className="h-14 w-auto object-contain rounded"
+                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setForm({ ...form, cadetIdImage: "" })}
+                        className="text-red-500 hover:text-red-600 font-bold uppercase text-[9px] font-mono cursor-pointer"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex space-x-2 pt-2">
                 <button

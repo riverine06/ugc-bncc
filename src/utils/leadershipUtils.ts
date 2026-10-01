@@ -12,7 +12,7 @@ export function isMemberActive(
   if (!member) return false;
 
   // Explicit Alumni / Former statuses
-  if (member.status === MemberStatus.ALUMNI) return false;
+  if (member.status === MemberStatus.ALUMNI || member.status === MemberStatus.FORMER_PUO) return false;
   if ((member as any).status === "Former" || (member as any).status === "former") return false;
   if (member.status === MemberStatus.APPLICANT) return false;
 

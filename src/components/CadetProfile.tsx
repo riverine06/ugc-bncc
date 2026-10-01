@@ -29,6 +29,10 @@ import {
   AlertCircle,
   AlertTriangle,
   Loader2,
+  Building2,
+  ZoomIn,
+  Maximize2,
+  ExternalLink,
 } from "lucide-react";
 import { Member, BNCCRank, MemberStatus, User as SystemUser, UserRole, Camp, PlatoonApplication } from "../types";
 import { hasEditorPrivileges } from "../services/auth";
@@ -540,7 +544,6 @@ function EditCadetDossier({
                   <option value={BNCCRank.CORPORAL}>Corporal</option>
                   <option value={BNCCRank.SERGEANT}>Sergeant</option>
                   <option value={BNCCRank.CADET_UNDER_OFFICER}>Cadet Under Officer (CUO)</option>
-                  <option value={BNCCRank.PLATOON_UNDER_OFFICER}>Platoon Under Officer (PUO)</option>
                 </select>
               </div>
 
@@ -670,16 +673,16 @@ function EditCadetDossier({
           <div className="space-y-4 text-left">
             <div className="space-y-1.5 bg-slate-950 p-3 rounded border border-slate-800">
               <span className="text-[10px] font-mono font-bold text-amber-500 uppercase block tracking-wider">
-                // BATTALION CAMPS PARTICIPATION REGISTRY
+                // CAMP PARTICIPATION REGISTRY
               </span>
               <p className="text-[10px] text-slate-400 font-mono leading-relaxed">
-                Camp participation is managed centrally via the <strong>Admin Operations Hub &rarr; Battalion Camps Registry</strong>. Any camp assigned to this cadet in the Camp Registry will automatically synchronize to this profile dossier.
+                Camp participation is managed centrally via the <strong>Admin Operations Hub &rarr; Camp Registry</strong>. Any camp assigned to this cadet in the Camp Registry will automatically synchronize to this profile dossier.
               </p>
             </div>
 
             {camps.length === 0 ? (
               <div className="bg-slate-950 p-4 rounded border border-slate-800 text-center text-xs font-mono text-slate-500 italic">
-                NO BATTALION CAMPS ASSIGNED TO THIS CADET IN THE CENTRAL REGISTRY.
+                NO CAMPS ASSIGNED TO THIS CADET IN THE CENTRAL REGISTRY.
               </div>
             ) : (
               <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
@@ -697,10 +700,18 @@ function EditCadetDossier({
                       </span>
                     </div>
 
-                    <div className="flex items-center space-x-2 text-[9px] text-slate-400 font-mono">
-                      <span>{cp.location}</span>
+                    <div className="flex flex-wrap items-center gap-x-2 text-[9px] text-slate-400 font-mono">
+                      <span>{cp.location || "Venue Unspecified"}</span>
                       <span>•</span>
-                      <span>{cp.startDate} to {cp.endDate}</span>
+                      <span>
+                        {cp.startDate && cp.endDate
+                          ? `${cp.startDate} to ${cp.endDate}`
+                          : cp.startDate
+                          ? `Commenced: ${cp.startDate}`
+                          : cp.endDate
+                          ? `Completed: ${cp.endDate}`
+                          : "Dates Unspecified"}
+                      </span>
                     </div>
 
                     {cp.awards && (
@@ -1026,6 +1037,19 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
   const [profileNotification, setProfileNotification] = React.useState<{ message: string; type: "success" | "error" } | null>(null);
   const [deleteProfileDialog, setDeleteProfileDialog] = React.useState(false);
   const [deletingProfile, setDeletingProfile] = React.useState(false);
+  const [isPhotoLightboxOpen, setIsPhotoLightboxOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsPhotoLightboxOpen(false);
+      }
+    };
+    if (isPhotoLightboxOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isPhotoLightboxOpen]);
 
   const showProfileNotice = (message: string, type: "success" | "error" = "success") => {
     setProfileNotification({ message, type });
@@ -1639,26 +1663,40 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
                 <span>DELETE PROFILE</span>
               </button>
             )}
-            <div className="bg-army-950 dark:bg-slate-900 px-3 py-1.5 rounded border border-army-700 dark:border-slate-800 font-mono text-xs text-amber-400">
-              RECORD SERIAL: {member.id}
-            </div>
+            {!(member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER || member.status === MemberStatus.FORMER_PUO) ? (
+              <div className="bg-army-950 dark:bg-slate-900 px-3 py-1.5 rounded border border-army-700 dark:border-slate-800 font-mono text-xs text-amber-400">
+                CADET ID: {member.id}
+              </div>
+            ) : (
+              <div className="bg-amber-500/20 px-3 py-1.5 rounded border border-amber-500/50 font-mono text-xs text-amber-300 font-bold uppercase">
+                {member.status === MemberStatus.FORMER_PUO ? "FORMER PLATOON COMMANDER" : "FACULTY PLATOON COMMANDER"}
+              </div>
+            )}
           </div>
         </div>
 
         <div className="p-6 md:p-8 grid md:grid-cols-4 gap-8">
           {/* Profile Photo Column */}
           <div className="flex flex-col items-center space-y-3">
-            <div className="relative">
+            <div 
+              className="relative group cursor-pointer"
+              onClick={() => setIsPhotoLightboxOpen(true)}
+              title="Click to view enlarged portrait photograph"
+            >
               <img
                 src={member.photoUrl}
                 alt={`Official Service Portrait - Cadet ${member.rank} ${member.fullName}`}
-                className="w-40 h-40 rounded-lg object-cover border-4 border-slate-100 dark:border-slate-800 shadow-md"
+                className="w-40 h-40 rounded-lg object-cover border-4 border-slate-100 dark:border-slate-800 shadow-md group-hover:border-amber-500 transition-all duration-200 group-hover:scale-[1.02]"
                 referrerPolicy="no-referrer"
                 loading="lazy"
                 decoding="async"
               />
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex flex-col items-center justify-center space-y-1 text-white font-mono text-[10px] font-bold pointer-events-none">
+                <ZoomIn className="h-5 w-5 text-amber-400 animate-pulse" />
+                <span className="text-amber-300 tracking-wider">ENLARGE</span>
+              </div>
               {member.verified && (
-                <div className="absolute -bottom-2 -right-2 bg-emerald-600 text-white p-1 rounded-full border-2 border-white dark:border-slate-800 shadow shadow-emerald-800/50" title="Admin Verified Profile">
+                <div className="absolute -bottom-2 -right-2 bg-emerald-600 text-white p-1 rounded-full border-2 border-white dark:border-slate-800 shadow shadow-emerald-800/50 z-10" title="Admin Verified Profile">
                   <UserCheck className="h-4 w-4" />
                 </div>
               )}
@@ -1689,22 +1727,32 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
             )}
 
             <div className="text-center w-full space-y-1">
-              <span className="text-xs bg-amber-100 dark:bg-amber-950/60 text-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-500/50 font-bold px-3 py-1.5 rounded-md font-mono uppercase block tracking-wider shadow-sm">
-                {member.rank}
+              <span className={`text-xs font-bold px-3 py-1.5 rounded-md font-mono uppercase block tracking-wider shadow-sm border ${
+                member.status === MemberStatus.FORMER_PUO
+                  ? "bg-slate-800 text-amber-300 border-amber-500/40"
+                  : member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER
+                  ? "bg-amber-500 text-slate-950 border-amber-400 font-black"
+                  : "bg-amber-100 dark:bg-amber-950/60 text-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-500/50"
+              }`}>
+                {member.status === MemberStatus.FORMER_PUO ? "Former PUO" : member.rank}
               </span>
               <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono uppercase block">
                 STATUS: {member.isArmyStaff 
                   ? "Assigned Army Staff" 
-                  : member.rank === BNCCRank.PLATOON_UNDER_OFFICER 
-                  ? "Faculty Commander" 
+                  : member.status === MemberStatus.FORMER_PUO
+                  ? "Former Platoon Commander (Tenure Concluded)"
+                  : member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER
+                  ? "Active Platoon Commander (Faculty PUO)" 
                   : member.status}
               </span>
               <div className="pt-2">
                 <span className="inline-flex items-center text-[9px] font-mono bg-emerald-500/10 border border-emerald-500 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded uppercase font-bold">
                   {member.isArmyStaff 
                     ? "✓ Active Duty Staff" 
-                    : member.rank === BNCCRank.PLATOON_UNDER_OFFICER 
-                    ? "✓ Platoon Commander" 
+                    : member.status === MemberStatus.FORMER_PUO
+                    ? "✓ Service Concluded (Former PUO)"
+                    : member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER
+                    ? "✓ Active Platoon Commander (PUO)" 
                     : "✓ Combat Fit"}
                 </span>
               </div>
@@ -1719,15 +1767,15 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
                 <span className="text-[9px] font-mono text-slate-400 block uppercase">
                   {member.isArmyStaff 
                     ? "Military Appointment" 
-                    : member.rank === BNCCRank.PLATOON_UNDER_OFFICER 
-                    ? "Faculty Designation" 
+                    : member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER || member.status === MemberStatus.FORMER_PUO
+                    ? "Faculty Designation & Dept" 
                     : "HSC Group"}
                 </span>
                 <strong className="text-slate-900 dark:text-slate-100 font-display text-sm uppercase">{member.department}</strong>
               </div>
               <div>
                 <span className="text-[9px] font-mono text-slate-400 block uppercase">
-                  {member.isArmyStaff || member.rank === BNCCRank.PLATOON_UNDER_OFFICER 
+                  {member.isArmyStaff || member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER || member.status === MemberStatus.FORMER_PUO 
                     ? "Service / Posting Session" 
                     : "Academic Session"}
                 </span>
@@ -1741,27 +1789,110 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
                 <span className="text-[9px] font-mono text-slate-400 block uppercase">
                   {member.isArmyStaff 
                     ? "Posting Year" 
-                    : member.rank === BNCCRank.PLATOON_UNDER_OFFICER 
+                    : member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER || member.status === MemberStatus.FORMER_PUO
                     ? "Appointment Year" 
                     : "Enlisted Year"}
                 </span>
                 <strong className="text-slate-900 dark:text-slate-100 font-display text-sm">{member.joiningYear}</strong>
               </div>
+              {(member.servicePeriod || member.status === MemberStatus.FORMER_PUO || member.status === MemberStatus.PLATOON_OFFICER) && (
+                <div>
+                  <span className="text-[9px] font-mono text-slate-400 block uppercase">Service Period / Tenure</span>
+                  <strong className="text-amber-600 dark:text-amber-400 font-mono text-xs">{member.servicePeriod || `${member.joiningYear} - Present`}</strong>
+                </div>
+              )}
               {member.graduationYear && (
                 <div>
                   <span className="text-[9px] font-mono text-slate-400 block uppercase">Graduation Year</span>
                   <strong className="text-amber-700 dark:text-amber-400 font-display text-sm">{member.graduationYear}</strong>
                 </div>
               )}
-              {member.status === MemberStatus.ALUMNI && member.currentProfession && (
-                <div className="col-span-2 sm:col-span-1">
-                  <span className="text-[9px] font-mono text-slate-400 block uppercase">Current Service</span>
-                  <strong className="text-slate-900 dark:text-slate-100 font-display text-sm line-clamp-1 truncate max-w-[150px]">
-                    {member.currentProfession}
-                  </strong>
-                </div>
-              )}
             </div>
+
+            {/* CURRENT SERVICE & PROFESSIONAL DETAILS */}
+            {(() => {
+              const hasDesignation = Boolean(member.currentProfession && member.currentProfession.trim());
+              const hasOrganization = Boolean(member.currentOrganization && member.currentOrganization.trim());
+              const hasCity = Boolean(member.currentCity && member.currentCity.trim());
+              
+              const shouldShowSection = hasDesignation || hasOrganization || hasCity;
+              if (!shouldShowSection) return null;
+
+              const cardCount = [hasDesignation, hasOrganization, hasCity].filter(Boolean).length;
+
+              return (
+                <div className="bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl p-3 sm:p-4 space-y-2.5 shadow-xs">
+                  {/* Section Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-slate-200 dark:border-slate-800/80 pb-2">
+                    <div className="flex items-center space-x-2">
+                      <div className="p-1.5 bg-amber-500/10 text-amber-500 dark:text-amber-400 border border-amber-500/30 rounded-md shrink-0">
+                        <Briefcase className="h-3.5 w-3.5" />
+                      </div>
+                      <h4 className="font-display font-black text-xs uppercase tracking-wider text-slate-900 dark:text-white">
+                        CURRENT SERVICE & PROFESSIONAL DETAILS
+                      </h4>
+                    </div>
+                    <span className="self-start sm:self-auto text-[9px] font-mono bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                      OFFICIAL DOSSIER RECORD
+                    </span>
+                  </div>
+
+                  {/* Professional Detail Cards */}
+                  <div className={`grid grid-cols-1 ${cardCount === 1 ? "sm:grid-cols-1" : cardCount === 2 ? "sm:grid-cols-2" : "sm:grid-cols-2 md:grid-cols-3"} gap-2.5`}>
+                    {/* 1. CURRENT DESIGNATION / ROLE */}
+                    {hasDesignation && (
+                      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 sm:p-3 flex items-start space-x-2.5 transition-colors hover:border-amber-500/40">
+                        <div className="p-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5">
+                          <Briefcase className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[9px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase block truncate">
+                            CURRENT DESIGNATION / ROLE
+                          </span>
+                          <strong className="text-xs sm:text-sm font-sans font-bold text-slate-900 dark:text-slate-100 block break-words leading-tight mt-0.5">
+                            {member.currentProfession}
+                          </strong>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 2. COMPANY / ORGANIZATION */}
+                    {hasOrganization && (
+                      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 sm:p-3 flex items-start space-x-2.5 transition-colors hover:border-amber-500/40">
+                        <div className="p-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5">
+                          <Building2 className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[9px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase block truncate">
+                            COMPANY / ORGANIZATION
+                          </span>
+                          <strong className="text-xs sm:text-sm font-sans font-bold text-amber-600 dark:text-amber-400 block break-words leading-tight mt-0.5">
+                            {member.currentOrganization}
+                          </strong>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 3. DUTY STATION / CITY */}
+                    {hasCity && (
+                      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 sm:p-3 flex items-start space-x-2.5 transition-colors hover:border-amber-500/40">
+                        <div className="p-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5">
+                          <MapPin className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[9px] font-mono font-bold tracking-wider text-slate-500 dark:text-slate-400 uppercase block truncate">
+                            DUTY STATION / CITY
+                          </span>
+                          <strong className="text-xs sm:text-sm font-sans font-bold text-slate-900 dark:text-slate-100 block break-words leading-tight mt-0.5">
+                            {member.currentCity}
+                          </strong>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Biography */}
             <div>
@@ -1804,7 +1935,13 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
       </section>
 
       {/* NEW SECTION: VISUAL RANK PROGRESSION SLIDER */}
-      {!(member.isArmyStaff || member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.rank === "Platoon Under Officer (PUO)") && (() => {
+      {!(
+        member.isArmyStaff || 
+        member.rank === BNCCRank.PLATOON_UNDER_OFFICER || 
+        member.rank === "Platoon Under Officer (PUO)" ||
+        member.status === MemberStatus.PLATOON_OFFICER ||
+        member.status === MemberStatus.FORMER_PUO
+      ) && (() => {
         const getRankLevel = (rankStr: string): number => {
           if (!rankStr) return 1;
           const r = rankStr.toLowerCase();
@@ -1968,12 +2105,22 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
               isAdmin={isAdmin}
               onCampCreated={() => {}}
               memberFullName={member.fullName}
-              isPUOOrStaff={member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.isArmyStaff}
+              isPUOOrStaff={
+                member.rank === BNCCRank.PLATOON_UNDER_OFFICER || 
+                member.status === MemberStatus.PLATOON_OFFICER || 
+                member.status === MemberStatus.FORMER_PUO || 
+                member.isArmyStaff
+              }
             />
           )}
 
           {/* Rank Promotion Log (Admins Only to Modify, Visible to all) */}
-          {!(member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.isArmyStaff) && (
+          {!(
+            member.rank === BNCCRank.PLATOON_UNDER_OFFICER || 
+            member.status === MemberStatus.PLATOON_OFFICER || 
+            member.status === MemberStatus.FORMER_PUO || 
+            member.isArmyStaff
+          ) && (
             <div className="bg-white dark:bg-slate-900 p-5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
               <div className="border-b border-slate-100 dark:border-slate-800 pb-2">
                 <h4 className="font-display font-bold text-sm text-army-950 dark:text-amber-400 flex items-center space-x-1.5">
@@ -2025,7 +2172,7 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
 
             <div className="space-y-3.5 text-xs pt-2">
               {camps.length === 0 ? (
-                <p className="text-slate-500 italic text-[11px]">No battalion camps registered.</p>
+                <p className="text-slate-500 italic text-[11px]">No camps registered.</p>
               ) : (
                 camps.map((cp) => (
                   <div key={cp.id} className="border-b border-slate-50 dark:border-slate-950 pb-2.5 last:border-0 last:pb-0">
@@ -2148,6 +2295,71 @@ export default function CadetProfile({ memberId, onBack, currentUser }: CadetPro
 
         </div>
       </div>
+
+      {/* Full Portrait Lightbox Modal */}
+      {isPhotoLightboxOpen && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 sm:p-6"
+          onClick={() => setIsPhotoLightboxOpen(false)}
+        >
+          <div 
+            className="relative max-w-2xl w-full max-h-[92vh] flex flex-col items-center bg-slate-900 border border-amber-500/40 rounded-xl overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="w-full bg-slate-950 px-4 py-3 flex items-center justify-between border-b border-slate-800">
+              <div className="flex items-center space-x-2 truncate">
+                <span className="text-xs font-mono text-amber-400 font-bold uppercase tracking-wider truncate">
+                  {member.rank} • {member.fullName}
+                </span>
+                {!(member.rank === BNCCRank.PLATOON_UNDER_OFFICER || member.status === MemberStatus.PLATOON_OFFICER || member.status === MemberStatus.FORMER_PUO) && (
+                  <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                    (ID: {member.id})
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center space-x-2 shrink-0">
+                <a
+                  href={member.photoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-slate-400 hover:text-amber-400 p-1.5 rounded hover:bg-slate-800 transition-colors"
+                  title="Open Original Image in New Tab"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setIsPhotoLightboxOpen(false)}
+                  className="text-slate-400 hover:text-white p-1.5 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Close (Esc)"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Image Body */}
+            <div className="w-full flex-1 overflow-auto flex items-center justify-center p-4 bg-slate-950/60">
+              <img
+                src={member.photoUrl}
+                alt={`Official Portrait - ${member.fullName}`}
+                className="max-h-[68vh] w-auto max-w-full rounded-lg object-contain border-2 border-slate-800 shadow-2xl"
+              />
+            </div>
+
+            {/* Modal Footer */}
+            <div className="w-full bg-slate-950/90 px-4 py-2.5 border-t border-slate-800 flex items-center justify-between text-[11px] font-mono text-slate-400 flex-wrap gap-2">
+              <div className="flex items-center space-x-2">
+                <span>{member.department}</span>
+                <span>•</span>
+                <span>Session {member.session}</span>
+              </div>
+              <span className="text-amber-400 font-bold uppercase tracking-wide">{member.status}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

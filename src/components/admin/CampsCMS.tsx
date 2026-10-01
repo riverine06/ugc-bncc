@@ -71,10 +71,11 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
   const [form, setForm] = React.useState({
     name: "",
     location: "",
-    startDate: new Date().toISOString().split("T")[0],
-    endDate: new Date().toISOString().split("T")[0],
+    startDate: "",
+    endDate: "",
     description: "",
   });
+  const [datesUnknown, setDatesUnknown] = React.useState(false);
 
   const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
     const id = generateId("tst");
@@ -109,12 +110,13 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
   const handleStartEdit = (camp: Camp) => {
     setEditingCamp(camp);
     setForm({
-      name: camp.name,
-      location: camp.location,
-      startDate: camp.startDate,
-      endDate: camp.endDate,
-      description: camp.description,
+      name: camp.name || "",
+      location: camp.location || "",
+      startDate: camp.startDate || "",
+      endDate: camp.endDate || "",
+      description: camp.description || "",
     });
+    setDatesUnknown(!camp.startDate && !camp.endDate);
     setShowForm(true);
     showToast(`Loaded "${camp.name}" for editing`, "info");
   };
@@ -124,32 +126,39 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
     setForm({
       name: "",
       location: "",
-      startDate: new Date().toISOString().split("T")[0],
-      endDate: new Date().toISOString().split("T")[0],
+      startDate: "",
+      endDate: "",
       description: "",
     });
+    setDatesUnknown(false);
   };
 
   const handlePublishOrUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.location || !form.startDate || !form.endDate || !form.description) {
-      showToast("Please provide all camp details.", "error");
+    if (!form.name.trim()) {
+      showToast("Please provide the Camp Official Name.", "error");
       return;
     }
 
     try {
+      const campData = {
+        name: form.name.trim(),
+        location: form.location.trim() || "Venue Unspecified",
+        startDate: form.startDate ? form.startDate : "",
+        endDate: form.endDate ? form.endDate : "",
+        description: form.description.trim() || "",
+      };
+
       if (editingCamp) {
-        await updateDocument("camps", editingCamp.id, {
-          ...form,
-        });
+        await updateDocument("camps", editingCamp.id, campData);
         showToast("Camp entry successfully updated!", "success");
       } else {
         const id = generateId("cmp");
         await createDocument("camps", {
-          ...form,
+          ...campData,
           id,
         }, id);
-        showToast("New Camp entry successfully created!", "success");
+        showToast("New Camp entry successfully registered!", "success");
       }
       handleCancelEdit();
       setShowForm(false);
@@ -218,10 +227,13 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
     });
   };
 
-  const getStatus = (start: string, end: string): "Upcoming" | "Ongoing" | "Completed" => {
+  const getStatus = (start?: string, end?: string): "Upcoming" | "Ongoing" | "Completed" => {
+    if (!start && !end) return "Completed"; // Past recorded camp with date unspecified
     const now = new Date().toISOString().split("T")[0];
-    if (now < start) return "Upcoming";
-    if (now > end) return "Completed";
+    if (start && now < start) return "Upcoming";
+    if (end && now > end) return "Completed";
+    if (!start && end && now > end) return "Completed";
+    if (!end && start && now < start) return "Upcoming";
     return "Ongoing";
   };
 
@@ -232,18 +244,18 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
     
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      const matchName = camp.name.toLowerCase().includes(term);
-      const matchLoc = camp.location.toLowerCase().includes(term);
-      const matchDesc = camp.description.toLowerCase().includes(term);
+      const matchName = (camp.name || "").toLowerCase().includes(term);
+      const matchLoc = (camp.location || "").toLowerCase().includes(term);
+      const matchDesc = (camp.description || "").toLowerCase().includes(term);
       if (!matchName && !matchLoc && !matchDesc) return false;
     }
     return true;
   }).sort((a, b) => {
     let comparison = 0;
     if (sortBy === "name") {
-      comparison = a.name.localeCompare(b.name);
+      comparison = (a.name || "").localeCompare(b.name || "");
     } else {
-      comparison = a.startDate.localeCompare(b.startDate);
+      comparison = (a.startDate || "").localeCompare(b.startDate || "");
     }
     return sortOrder === "asc" ? comparison : -comparison;
   });
@@ -488,10 +500,10 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="space-y-1">
           <h2 className="text-lg font-display font-black text-slate-950 dark:text-amber-500 uppercase tracking-wide flex items-center gap-2">
-            <span>BATTALION CAMPS REGISTRY</span>
+            <span>CAMP REGISTRY</span>
           </h2>
           <p className="text-xs text-slate-500 font-mono font-medium uppercase">
-            Manage active military training camps, venues, and centralized participant rosters.
+            Manage military training camps, venues, and centralized participant rosters.
           </p>
         </div>
         {!showForm && (
@@ -530,7 +542,9 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
           <form onSubmit={handlePublishOrUpdate} className="space-y-4">
             <div className="grid md:grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-mono text-slate-400 uppercase block font-bold">Camp Official Name</label>
+                <label className="text-[10px] font-mono text-slate-400 uppercase block font-bold">
+                  Camp Official Name <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   required
@@ -542,44 +556,120 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-mono text-slate-400 uppercase block font-bold">Location / Venue</label>
+                <label className="text-[10px] font-mono text-slate-400 uppercase block font-bold">
+                  Location / Venue <span className="text-slate-500 font-normal font-sans">(Optional)</span>
+                </label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. Savar Cantonment, Dhaka"
+                  placeholder="e.g. Savar Cantonment, Dhaka (Optional)"
                   value={form.location}
                   onChange={(e) => setForm({ ...form, location: e.target.value })}
                   className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded py-2 px-3 w-full text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-mono text-slate-400 uppercase block font-bold">Commencement Date</label>
-                <input
-                  type="date"
-                  required
-                  value={form.startDate}
-                  onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                  className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded py-2 px-3 w-full text-sm focus:outline-none focus:border-amber-500"
-                />
+            </div>
+
+            {/* Optional Dates Section */}
+            <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50 dark:bg-slate-950 p-3 rounded border border-slate-200 dark:border-slate-800">
+                <label className="flex items-center space-x-2.5 text-xs font-mono font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    id="dates-unknown-toggle"
+                    checked={datesUnknown}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setDatesUnknown(checked);
+                      if (checked) {
+                        setForm((prev) => ({ ...prev, startDate: "", endDate: "" }));
+                      }
+                    }}
+                    className="rounded border-slate-300 dark:border-slate-700 text-amber-500 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                  />
+                  <span>Exact Dates Unknown (Leave blank for past camps)</span>
+                </label>
+                {(form.startDate || form.endDate) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((prev) => ({ ...prev, startDate: "", endDate: "" }));
+                      setDatesUnknown(true);
+                    }}
+                    className="text-[10px] font-mono text-red-500 hover:underline cursor-pointer uppercase font-bold self-start sm:self-auto"
+                  >
+                    Clear Both Dates
+                  </button>
+                )}
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-mono text-slate-400 uppercase block font-bold">Completion Date</label>
-                <input
-                  type="date"
-                  required
-                  value={form.endDate}
-                  onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                  className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded py-2 px-3 w-full text-sm focus:outline-none focus:border-amber-500"
-                />
-              </div>
+              {!datesUnknown ? (
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-mono text-slate-400 uppercase block font-bold">
+                        Commencement Date <span className="text-slate-500 font-normal font-sans">(Optional)</span>
+                      </label>
+                      {form.startDate && (
+                        <button
+                          type="button"
+                          onClick={() => setForm({ ...form, startDate: "" })}
+                          className="text-[9px] font-mono text-amber-500 hover:underline cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="date"
+                      value={form.startDate}
+                      onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                      className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded py-2 px-3 w-full text-sm focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-mono text-slate-400 uppercase block font-bold">
+                        Completion Date <span className="text-slate-500 font-normal font-sans">(Optional)</span>
+                      </label>
+                      {form.endDate && (
+                        <button
+                          type="button"
+                          onClick={() => setForm({ ...form, endDate: "" })}
+                          className="text-[9px] font-mono text-amber-500 hover:underline cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="date"
+                      value={form.endDate}
+                      onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                      className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded py-2 px-3 w-full text-sm focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-md flex items-center justify-between text-xs text-amber-700 dark:text-amber-400 font-mono">
+                  <span>✓ Dates left unspecified — this camp will be recorded safely as a past event.</span>
+                  <button
+                    type="button"
+                    onClick={() => setDatesUnknown(false)}
+                    className="text-amber-600 dark:text-amber-400 hover:underline text-[11px] font-bold cursor-pointer underline ml-2 shrink-0"
+                  >
+                    Specify Dates Instead
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-mono text-slate-400 uppercase block font-bold">Operational description / Agenda</label>
+              <label className="text-[10px] font-mono text-slate-400 uppercase block font-bold">
+                Operational description / Agenda <span className="text-slate-500 font-normal font-sans">(Optional)</span>
+              </label>
               <textarea
-                required
                 rows={3}
                 placeholder="Describe tactical maneuvers, shooting instructions, specialized regiment modules, or camp logistics..."
                 value={form.description}
@@ -723,7 +813,7 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
           </div>
         ) : paginatedCamps.length === 0 ? (
           <div className="py-16 text-center text-slate-500 italic text-xs font-mono">
-            NO BATTALION CAMP RECORDS FOUND MATCHING SPECIFIED CRITERIA.
+            NO CAMP RECORDS FOUND MATCHING SPECIFIED CRITERIA.
           </div>
         ) : (
           <div className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -776,7 +866,15 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
                         </span>
                         <span className="flex items-center space-x-1">
                           <Calendar className="h-3 w-3 text-slate-400" />
-                          <span>{camp.startDate} to {camp.endDate}</span>
+                          <span>
+                            {camp.startDate && camp.endDate
+                              ? `${camp.startDate} to ${camp.endDate}`
+                              : camp.startDate
+                              ? `Commenced: ${camp.startDate}`
+                              : camp.endDate
+                              ? `Completed: ${camp.endDate}`
+                              : "Dates Unspecified"}
+                          </span>
                         </span>
                       </div>
 
@@ -866,7 +964,13 @@ export default function CampsCMS({ onRefresh }: CampsCMSProps) {
                     CAMP ID: {managingCamp.id}
                   </span>
                   <span className="text-slate-400 font-mono text-xs">
-                    ({managingCamp.startDate} to {managingCamp.endDate})
+                    {managingCamp.startDate && managingCamp.endDate
+                      ? `(${managingCamp.startDate} to ${managingCamp.endDate})`
+                      : managingCamp.startDate
+                      ? `(Commenced: ${managingCamp.startDate})`
+                      : managingCamp.endDate
+                      ? `(Completed: ${managingCamp.endDate})`
+                      : "(Dates Unspecified)"}
                   </span>
                 </div>
                 <h3 className="text-lg font-display font-black text-amber-500 uppercase tracking-wide mt-1">

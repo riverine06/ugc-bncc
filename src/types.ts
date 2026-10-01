@@ -19,6 +19,7 @@ export enum MemberStatus {
   ACTIVE_CADET = "Active Cadet",
   ALUMNI = "Alumni",
   PLATOON_OFFICER = "Platoon Officer (PUO)",
+  FORMER_PUO = "Former PUO",
   HONORARY_MEMBER = "Honorary Member",
 }
 
@@ -51,12 +52,14 @@ export interface Member {
   session: string; // e.g., 2022-2023
   joiningYear: number;
   graduationYear: number | null;
+  servicePeriod?: string; // e.g., "2018 - 2024" or "2024 - Present" for PUO
   bloodGroup: string;
   phone: string;
   email: string;
   biography: string;
   status: MemberStatus;
   verified: boolean;
+  address?: string; // Residential Address (Confidential, Admin-only)
   currentProfession?: string;
   currentOrganization?: string;
   currentCity?: string;
@@ -119,10 +122,10 @@ export interface Activity {
 export interface Camp {
   id: string;
   name: string;
-  location: string;
-  startDate: string;
-  endDate: string;
-  description: string;
+  location?: string;
+  startDate?: string;
+  endDate?: string;
+  description?: string;
 }
 
 export interface CampParticipant {
